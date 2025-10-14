@@ -14,12 +14,11 @@ def setFecha():
         raise ValueError("La fecha no tiene el formato AAAA-MM-DDTHH:MM:SS o no es válida")
 def setUrl(x):
     if(x==1):
-        sol=f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
+        return f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
     elif(x==2):
         fechaIniStr=setFecha()
         fechaFinStr=setFecha()
-        sol=f"https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/todasestaciones"
-    return sol
+        return f"https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/todasestaciones"
 def getData(x):
     try:
         url=setUrl(x)
@@ -36,6 +35,6 @@ def getData(x):
     except ValueError:
         print(f"La respuesta no tiene un formato JSON válido")
 #variables
-x=input("1: tiempo actual\n2: tiempo entre dos fechas pasadas")
+x=int(input("1: tiempo actual\n2: tiempo entre dos fechas pasadas"))
 data=getData(x)
-print (data.text) #Según la documentación de AEMET debería devolver un json pero nos está devolviendo un fichero de texto.
+print (data)

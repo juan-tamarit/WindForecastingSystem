@@ -3,28 +3,20 @@
 import httpx
 import datetime
 import json
-from config import api_key
+from config import api_key, cds
 
 #funciones
 def setFecha():
+    #Se creo originalmente para sacar datos de la antártida, podría tener utilidad para sacar datos históricos de AEMET
     fechaStr=input("El formato de la fecha debe ser el siguiente: AAAA-MM-DDTHH:MM:SS")
     try:
         fecha=datetime.datetime.strptime(fechaStr,"%Y-%m-%dT%H:%M:%S")
         return fecha.strftime("%Y-%m-%dT%H:%M:%SUTC")
     except ValueError:
         raise ValueError("La fecha no tiene el formato AAAA-MM-DDTHH:MM:SS o no es válida")
-def setUrl(x):
-    if(x==1):
-        return f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
-    elif(x==2):
-        fechaIniStr=setFecha()
-        fechaFinStr=setFecha()
-        return f"https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/todasestaciones"
-import json
-
-def getData(x):
+def getDataAemet():
     try:
-        url = setUrl(x)
+        url = f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
         endPoint = httpx.get(f"{url}?api_key={api_key}", timeout=300.0)
         endPoint.raise_for_status()
         url_datos = endPoint.json()["datos"]
@@ -51,7 +43,27 @@ def transform_data_into_json(data):
     elif 'text/plain' in content_type:
         json_objects=[json.loads(decoded_text)]
         return json_objects
+def getDataERA5():
+    #Esto es solo una pequeña prueba para comprobar que se conecta a la api, hay que modificarlo para que pueda ser algo general
+    dataset = 'reanalysis-era5-single-levels'
+    request = {
+        'product_type': 'reanalysis',
+        'variable': [
+            '10m_u_component_of_wind',
+            '10m_v_component_of_wind'
+        ],
+        'year': '2024',
+        'month': '01',
+        'day': '01',
+        'time': ['00:00', '06:00', '12:00', '18:00'],
+        'format': 'netcdf'
+    }
+    target_file = r"C:\Users\User\Downloads\era5_wind_10m.nc"
+    cds.retrieve(dataset, request, target_file)
+    print(f"Datos descargados y guardados en {target_file}")
+
 #variables
-x=int(input("1: tiempo actual\n2: tiempo entre dos fechas pasadas"))
-data=getData(x)
-transformed_data=transform_data_into_json(data)
+#data=getDataAemet()
+#transformed_data=transform_data_into_json(data)
+#print(transformed_data)
+

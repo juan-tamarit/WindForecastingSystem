@@ -6,14 +6,11 @@ from config import cds
 
 def getDataERA5(start_year,end_year):
     dataset = 'reanalysis-era5-single-levels'
-    #Generar lista de fechas con todos los días entre 01/01/star_year y 01/01/end_year (este último no incluido)
-    start_dt=datetime(start_year,1,1)
-    end_dt=datetime(end_year,1,1)
-    date_list=[start_dt+timedelta(days=d) for d in range((end_dt-start_dt).days)]
-    #separamos la lista de días en los años días y meses para poder pasarselo al request
-    years=[sorted(list(set([dt.strftime("%Y") for dt in date_list])))]
-    months=[sorted(list(set([dt.strftime("%m") for dt in date_list])))]
-    days=[sorted(list(set([dt.strftime("%d") for dt in date_list])))]
+    #Generar lista de fechas con todos los días entre 01/01/star_year y 31/12/end_year-1 
+    years = [str(y) for y in range(start_year, end_year)]
+    months = [f"{m:02d}" for m in range(1, 13)]
+    days = [f"{d:02d}" for d in range(1, 32)]
+
     #creamos el request
     request = {
         'product_type': 'reanalysis',

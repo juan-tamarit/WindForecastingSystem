@@ -1,20 +1,29 @@
 import xarray as xr
 import json
 import os
+from datetime import datetime,timedelta
 from config import cds
 
-def getDataERA5():
-    #Esto es solo una pequeña prueba para comprobar que se conecta a la api, hay que modificarlo para que pueda ser algo general
+def getDataERA5(start_year,end_year):
     dataset = 'reanalysis-era5-single-levels'
+    #Generar lista de fechas con todos los días entre 01/01/star_year y 01/01/end_year (este último no incluido)
+    start_dt=datetime(start_year,1,1)
+    end_dt=datetime(end_year,1,1)
+    date_list=[start_dt+timedelta(days=d) for d in range((end_dt-start_dt).days)]
+    #separamos la lista de días en los años días y meses para poder pasarselo al request
+    years=[sorted(list(set([dt.strftime("%Y") for dt in date_list])))]
+    months=[sorted(list(set([dt.strftime("%m") for dt in date_list])))]
+    days=[sorted(list(set([dt.strftime("%d") for dt in date_list])))]
+    #creamos el request
     request = {
         'product_type': 'reanalysis',
         'variable': [
             '10m_u_component_of_wind',
             '10m_v_component_of_wind'
         ],
-        'year': '2024',
-        'month': '01',
-        'day': '01',
+        'year': years,
+        'month': months,
+        'day': days,
         'time': ['00:00', '06:00', '12:00', '18:00'],
         'format': 'netcdf'
     }

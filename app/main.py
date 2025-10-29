@@ -17,7 +17,8 @@ def setFecha():
         raise ValueError("La fecha no tiene el formato AAAA-MM-DDTHH:MM:SS o no es válida")
 
 #variables
+start_year=2020
+end_year=2026
+#código
 dataAEMET=getDataAemet()
-#print(dataAEMET)
-dataERA5=getDataERA5()
-#print(dataERA5)
+dataERA5=getDataERA5(start_year,end_year)

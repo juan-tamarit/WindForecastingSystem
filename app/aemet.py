@@ -5,9 +5,9 @@ from config import api_key
 def getDataAemet():
     try:
         url = f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
-        endPoint = httpx.get(f"{url}?api_key={api_key}", timeout=300.0)
-        endPoint.raise_for_status()
-        url_datos = endPoint.json()["datos"]
+        end_point = httpx.get(f"{url}?api_key={api_key}", timeout=300.0)
+        end_point.raise_for_status()
+        url_datos = end_point.json()["datos"]
         datos = httpx.get(f"{url_datos}?api_key={api_key}", timeout=300.0)
         datos.raise_for_status()
         json_data=transformDataIntoJson(datos)

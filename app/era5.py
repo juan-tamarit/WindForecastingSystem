@@ -19,16 +19,28 @@ def getDataERA5():
         'format': 'netcdf'
     }
     target_file = r"C:\Users\User\Downloads\era5_wind_10m.nc"
-    cds.retrieve(dataset, request, target_file)
-    print(f"Datos descargados y guardados en {target_file}")
-    json_data=convertIntoJson(target_file)
-    #borramos el archivo una vez procesado y convertido en json
-    os.remove(target_file)
-    return json_data
+    try:
+        cds.retrieve(dataset, request, target_file)
+        print(f"Datos descargados y guardados en {target_file}")
+        json_data=convertIntoJson(target_file)
+        os.remove(target_file)#borramos el archivo una vez procesado y convertido en json
+        return json_data
+    except Exception as e:
+        print (f"Error en el proceso de optención de los datos de ERA5:{e}")
+        if os.path.exists(target_file):
+            try:
+                os.remove(target_file)
+                print(f"El archivo {target_file} se ha borrado tras fallo")
+            except Exception:
+                pass
+        return None
 def convertIntoJson(target_file):
     #leer el archivo netcdf con xarray para convertirlo en json
-    ds=xr.open_dataset(target_file,decode_times=False)
-    data_dic=ds.to_dict() #Conviertir en diccionario
-    json_data = json.dumps(data_dic, indent=2)  # Serializar a JSON
-    #devolvemos la información
-    return json_data
+    try:
+        ds=xr.open_dataset(target_file,decode_times=False)
+        data_dic=ds.to_dict() #Conviertir en diccionario
+        json_data = json.dumps(data_dic, indent=2)  # Serializar a JSON
+        return json_data#devolvemos la información
+    except Exception as e:
+        print(f"Error abriendo o procesando el archivo NetCDF: {e}")
+        raise

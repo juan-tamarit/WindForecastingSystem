@@ -1,7 +1,6 @@
 import xarray as xr
 import json
 import os
-from datetime import datetime,timedelta
 from config import cds
 
 def getDataERA5(start_year,end_year):

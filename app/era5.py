@@ -14,13 +14,16 @@ def getDataERA5(start_year,end_year):
     request = {
         'product_type': 'reanalysis',
         'variable': [
-            '10m_u_component_of_wind',
-            '10m_v_component_of_wind'
+            '10m_u_component_of_wind',# viento Este-Oeste a 10 m
+            '10m_v_component_of_wind',# viento Norte-Sur a 10 m
+            '2m_temperature',# temperatura a 2 m en kelvin
+            'surface_pressure'# presión atmosférica
         ],
         'year': years,
         'month': months,
         'day': days,
         'time': ['00:00', '06:00', '12:00', '18:00'],
+        'area': [44.0, -10.0, 36.0, 4.0],
         'format': 'netcdf'
     }
     target_file = r"C:\Users\User\Downloads\era5_wind_10m.nc"

@@ -2,9 +2,12 @@ import httpx
 import json
 from config import api_key
 
-def getDataAemet():
+def getDataAemet(fecha_ini=None,fecha_fin=None):
     try:
-        url = f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
+        if fecha_ini is None and fecha_fin is None:
+            url = f"https://opendata.aemet.es/opendata/api/observacion/convencional/todas"
+        else:
+            url = f"https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}/fechafin/{fecha_fin}/todasestaciones"
         end_point = httpx.get(f"{url}?api_key={api_key}", timeout=300.0)
         end_point.raise_for_status()
         url_datos = end_point.json()["datos"]

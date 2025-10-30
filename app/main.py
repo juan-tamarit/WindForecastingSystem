@@ -20,5 +20,7 @@ def setFecha():
 start_year=2020
 end_year=2026
 #código
+#dataAEMET=getDataAemet("2025-01-01T00:00:00UTC","2025-01-16T23:59:59UTC")
 dataAEMET=getDataAemet()
-dataERA5=getDataERA5(start_year,end_year)
+print(dataAEMET)
+#dataERA5=getDataERA5(start_year,end_year)

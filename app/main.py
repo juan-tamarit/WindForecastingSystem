@@ -2,25 +2,20 @@
 
 from app.era5 import getDataERA5 
 from app.aemet import getDataAemet
-import datetime
-
-
-
+from datetime import datetime
 #funciones
-def setFecha():
-    #Se creo originalmente para sacar datos de la antártida, podría tener utilidad para sacar datos históricos de AEMET
-    fechaStr=input("El formato de la fecha debe ser el siguiente: AAAA-MM-DDTHH:MM:SS")
-    try:
-        fecha=datetime.datetime.strptime(fechaStr,"%Y-%m-%dT%H:%M:%S")
-        return fecha.strftime("%Y-%m-%dT%H:%M:%SUTC")
-    except ValueError:
-        raise ValueError("La fecha no tiene el formato AAAA-MM-DDTHH:MM:SS o no es válida")
-
+def setDates(fecha_ini_dt,fecha_fin_dt):
+    fecha_ini_AEMET=fecha_ini_dt.strftime("%Y-%m-%d")+"T00:00:00UTC"
+    fecha_fin_AEMET=fecha_fin_dt.strftime("%Y-%m-%d")+"T00:00:00UTC"
+    dates={"aemet":[fecha_ini_AEMET,fecha_fin_AEMET],"era5":[fecha_ini_dt,fecha_fin_dt]}
+    return dates
 #variables
-start_year=2020
-end_year=2026
+start=datetime(2024,1,1)
+end=datetime(2024,1,16)
+dates=setDates(start,end)
 #código
-#dataAEMET=getDataAemet("2025-01-01T00:00:00UTC","2025-01-16T23:59:59UTC")
-dataAEMET=getDataAemet()
-print(dataAEMET)
-#dataERA5=getDataERA5(start_year,end_year)
+#dataAEMET=getDataAemet(dates["aemet"][0],dates["aemet"][1])
+#dataAEMET=getDataAemet()
+#print(dataAEMET)
+dataERA5=getDataERA5(dates["era5"][0],dates["era5"][1])
+print(dataERA5)

@@ -9,9 +9,9 @@ def getDataERA5(start_dt,end_dt):
     #calcular días entre fecha_ini y fecha_end
     date_list=[start_dt+timedelta(days=d) for d in range((end_dt-start_dt).days)]
     #Generar lista
-    years=[sorted(list(set([dt.strftime("%Y") for dt in date_list])))]
-    months=[sorted(list(set([dt.strftime("%m") for dt in date_list])))]
-    days=[sorted(list(set([dt.strftime("%d") for dt in date_list])))]
+    years = sorted(list(set([int(dt.strftime("%Y")) for dt in date_list])))
+    months = sorted(list(set([int(dt.strftime("%m")) for dt in date_list])))
+    days = sorted(list(set([int(dt.strftime("%d")) for dt in date_list])))
     #creamos el request
     request = {
         'product_type': 'reanalysis',

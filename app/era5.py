@@ -1,15 +1,17 @@
 import xarray as xr
 import json
 import os
+from datetime import timedelta,datetime
 from config import cds
 
-def getDataERA5(start_year,end_year):
+def getDataERA5(start_dt,end_dt):
     dataset = 'reanalysis-era5-single-levels'
-    #Generar lista de fechas con todos los días entre 01/01/star_year y 31/12/end_year-1 
-    years = [str(y) for y in range(start_year, end_year)]
-    months = [f"{m:02d}" for m in range(1, 13)]
-    days = [f"{d:02d}" for d in range(1, 32)]
-
+    #calcular días entre fecha_ini y fecha_end
+    date_list=[start_dt+timedelta(days=d) for d in range((end_dt-start_dt).days)]
+    #Generar lista
+    years=[sorted(list(set([dt.strftime("%Y") for dt in date_list])))]
+    months=[sorted(list(set([dt.strftime("%m") for dt in date_list])))]
+    days=[sorted(list(set([dt.strftime("%d") for dt in date_list])))]
     #creamos el request
     request = {
         'product_type': 'reanalysis',

@@ -34,7 +34,7 @@ def transformDataIntoJson(data):
         if 'aplication/json' in content_type:
             return data.json()
         elif 'text/plain' in content_type:
-            json_objects=[json.loads(decoded_text)]
+            json_objects=json.loads(decoded_text)
             return json_objects
         else:
             print(f"Tipo de contenido inesperado: {content_type}")

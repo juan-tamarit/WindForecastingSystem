@@ -48,9 +48,9 @@ def convertIntoJson(target_file):
     #leer el archivo netcdf con xarray para convertirlo en json
     try:
         ds=xr.open_dataset(target_file,decode_times=False)
-        data_dic=ds.to_dict() #Conviertir en diccionario
-        json_data = json.dumps(data_dic, indent=2)  # Serializar a JSON
-        return json_data#devolvemos la información
+        df=ds.to_dataframe().reset_index()
+        data_dic=df.to_dict(orient="records") #Conviertir en diccionario
+        return data_dic
     except Exception as e:
         print(f"Error abriendo o procesando el archivo NetCDF: {e}")
         raise

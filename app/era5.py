@@ -1,5 +1,4 @@
 import xarray as xr
-import json
 import os
 from datetime import timedelta,datetime
 from config import cds

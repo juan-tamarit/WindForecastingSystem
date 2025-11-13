@@ -15,17 +15,17 @@ def getDataERA5(start_dt,end_dt):
     request = {
         'product_type': 'reanalysis',
         'variable': [
-            '10m_u_component_of_wind',          # componente viento Este-Oeste
-            '10m_v_component_of_wind',          # componente viento Norte-Sur
-            '2m_temperature',                   # temperatura a 2 m
-            'surface_pressure',                 # presión atmosférica a nivel de superficie
-            'total_precipitation',              # precipitación total acumulada
-            '2m_dewpoint_temperature',          # temperatura del punto de rocío a 2 m
-            'mean_sea_level_pressure',           # presión a nivel medio del mar
-            'surface_solar_radiation_downwards', # radiación solar en superficie
-            'cloud_cover',                      # cobertura nubosa total
-            '10m_wind_speed',                   # velocidad del viento a 10 m
-            'relative_humidity'                 # humedad relativa (a específico nivel si se requiere)
+            '10m_u_component_of_wind',              # componente viento Este-Oeste
+            '10m_v_component_of_wind',              # componente viento Norte-Sur
+            '2m_temperature',                       # temperatura a 2 m
+            'surface_pressure',                     # presión atmosférica a nivel de superficie
+            'total_precipitation',                  # precipitación total acumulada
+            '2m_dewpoint_temperature',              # temperatura del punto de rocío a 2 m
+            'mean_sea_level_pressure',              # presión a nivel medio del mar
+            'surface_solar_radiation_downwards',    # radiación solar en superficie
+            'cloud_cover',                          # cobertura nubosa total
+            '10m_wind_speed',                       # velocidad del viento a 10 m
+            'relative_humidity'                     # humedad relativa (a específico nivel si se requiere)
         ],
         'year': years,
         'month': months,

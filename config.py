@@ -11,4 +11,4 @@ cds_url=f"https://cds.climate.copernicus.eu/api"
 cds_key=os.getenv("CDS_API_KEY")
 cds=cdsapi.Client(url=cds_url, key=cds_key)
 #Mongo
-mdb={"uri": "mongodb://localhost:27017/","db_name":"TFG","collection_name":"datosTFG","collection_aemet":"datosAEMET"}
+mdb={"uri": "mongodb://localhost:27017/","db_name":"TFG","collection_name":"datosTFG","collection_aemet":"datosAEMET","collection_era":"datosERA5"}

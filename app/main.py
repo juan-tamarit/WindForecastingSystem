@@ -19,7 +19,7 @@ def loadData(start,end):
         if current_end>end:
             current_end=end
         #obtención y carga de los datos AEMET
-        #control=0
+        control=0
         dates= setDates(current_start,current_end)
         data=getDataAemet(dates["aemet"][0],dates["aemet"][1])
         loadIntoDB(data,control)

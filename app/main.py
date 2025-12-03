@@ -4,6 +4,7 @@ from app.era5 import getDataERA5
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
 from app.DBmanager import loadIntoDB
+import time
 
 #funciones
 def setDates(fecha_ini_dt,fecha_fin_dt):
@@ -29,8 +30,9 @@ def loadData(start,end):
         loadIntoDB(data,control)
         #siguiente fecha
         current_start=current_end+timedelta(days=1)
+        time.sleep(3)
 #variables
 start=datetime(2024,1,1)
-end=datetime(2024,1,16)
+end=datetime(2024,12,31)
 #código
 loadData(start,end)

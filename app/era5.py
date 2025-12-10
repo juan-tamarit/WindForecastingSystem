@@ -15,37 +15,52 @@ def getDataERA5(start_dt,end_dt):
     request = {
         'product_type': 'reanalysis',
         'variable': [
-            '10m_u_component_of_wind',                  # componente viento Este-Oeste
-            '10m_v_component_of_wind',                  # componente viento Norte-Sur
-            '2m_temperature',                           # temperatura a 2 m
-            'surface_pressure',                         # presión atmosférica a nivel de superficie
-            #'total_precipitation',                     # precipitación total acumulada                    <--Problematico
-            '2m_dewpoint_temperature',                  # temperatura del punto de rocío a 2 m
-            'mean_sea_level_pressure',                  # presión a nivel medio del mar
-            #'surface_solar_radiation_downwards',       # radiación solar en superficie                    <--Problematico
-            'cloud_cover',                              # cobertura nubosa total
-            #'10m_wind_speed',                          # velocidad del viento a 10 m                       <--Problematico
-            'relative_humidity'                         # humedad relativa (a específico nivel si se requiere)
+            # Viento en superficie
+            '10m_u_component_of_wind',                 # componente viento Este-Oeste
+            '10m_v_component_of_wind',                 # componente viento Norte-Sur
+            '10m_wind_gust_since_previous_post_processing',  # rachas de viento a 10 m
+            # Termodinámica en superficie
+            '2m_temperature',                          # temperatura a 2 m
+            '2m_dewpoint_temperature',                 # punto de rocío a 2 m
+            'surface_pressure',                        # presión a nivel de superficie
+            'mean_sea_level_pressure',                 # presión a nivel medio del mar
+            'relative_humidity',                       # humedad relativa
+            # Nubes / radiación / precipitación
+            'cloud_cover',                             # cobertura nubosa total
+            'total_precipitation',                     # precipitación total acumulada
+            'surface_solar_radiation_downwards',       # radiación solar en superficie
+            # Estructura vertical / estabilidad
+            'boundary_layer_height',                   # altura de la capa límite
+            'convective_available_potential_energy',   # CAPE
+            'convective_inhibition',                   # CIN
+            'total_column_water_vapour'               # agua precipitable total
         ],
         'year': years,
         'month': months,
         'day': days,
-        'time': ['00:00', '06:00', '12:00', '18:00'],
+        'time': [
+            '00:00', '01:00', '02:00', '03:00', '04:00', '05:00',
+            '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
+            '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
+            '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
+        ],
         'area': [44.0, -10.0, 36.0, 4.0],
-        'format': 'netcdf'
+        'format': 'grib'
     }
-    target_file = r"C:\Users\User\Downloads\era5_wind_10m.nc"
+
+
+    target_file = r"C:\Users\User\Downloads\era5_wind_10m.grib"
     try:
         cds.retrieve(dataset, request, target_file)
         print(f"Datos descargados y guardados en {target_file}")
         json_data=convertIntoJson(target_file)
-        os.remove(target_file)#borramos el archivo una vez procesado y convertido en json
+        #os.remove(target_file)#borramos el archivo una vez procesado y convertido en json
         return json_data
     except Exception as e:
         print (f"Error en el proceso de optención de los datos de ERA5:{e}")
         if os.path.exists(target_file):
             try:
-                os.remove(target_file)
+                #os.remove(target_file)
                 print(f"El archivo {target_file} se ha borrado tras fallo")
             except Exception:
                 pass
@@ -53,10 +68,17 @@ def getDataERA5(start_dt,end_dt):
 def convertIntoJson(target_file):
     #leer el archivo netcdf con xarray para convertirlo en json
     try:
-        ds=xr.open_dataset(target_file,decode_times=False)
+        ds=xr.open_dataset(target_file,engine="cfgrib",decode_times=False)
         df=ds.to_dataframe().reset_index()
         data_dic=df.to_dict(orient="records") #Conviertir en diccionario
         return data_dic
-    except Exception as e:
-        print(f"Error abriendo o procesando el archivo NetCDF: {e}")
-        raise
+    except Exception as e1:
+        print(f"Error abriendo o procesando el archivo NetCDF: {e1}")
+        try:
+            ds=xr.open_dataset(target_file,engine="scipy",decode_times=False)
+            df=ds.to_dataframe().reset_index()
+            data_dic=df.to_dict(orient="records") #Conviertir en diccionario
+            return data_dic
+        except Exception as e2:
+            print(f"Error abriendo o procesando el archivo NetCDF: {e2}")
+            raise

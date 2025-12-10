@@ -18,6 +18,8 @@ def loadIntoDB(data,control):
             for doc in data:
                 doc['valid_time']=datetime.utcfromtimestamp(doc['valid_time'])
                 collection_era.insert_one(doc)
+        else:
+            coleccion.insert_many(data)
     except Exception as e:
         print(f"Error en la carga: {e}")
         raise

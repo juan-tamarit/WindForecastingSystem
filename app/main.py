@@ -20,10 +20,10 @@ def loadData(start,end):
         if current_end>end:
             current_end=end
         #obtención y carga de los datos AEMET
-        control=0
+        #control=0
         dates= setDates(current_start,current_end)
-        data=getDataAemet(dates["aemet"][0],dates["aemet"][1])
-        loadIntoDB(data,control)
+        #data=getDataAemet(dates["aemet"][0],dates["aemet"][1])
+        #loadIntoDB(data,control)
         #obtención y carga de los datos ERA5
         control=1
         data=getDataERA5(dates["era5"][0],dates["era5"][1])
@@ -33,6 +33,8 @@ def loadData(start,end):
         time.sleep(3)
 #variables
 start=datetime(2024,1,1)
-end=datetime(2024,12,31)
+end=datetime(2024,1,2)
 #código
 loadData(start,end)
+#data=getDataAemet()
+#loadIntoDB(data,2)

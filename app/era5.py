@@ -72,13 +72,6 @@ def convertIntoJson(target_file):
         df=ds.to_dataframe().reset_index()
         data_dic=df.to_dict(orient="records") #Conviertir en diccionario
         return data_dic
-    except Exception as e1:
-        print(f"Error abriendo o procesando el archivo NetCDF: {e1}")
-        try:
-            ds=xr.open_dataset(target_file,engine="scipy",decode_times=False)
-            df=ds.to_dataframe().reset_index()
-            data_dic=df.to_dict(orient="records") #Conviertir en diccionario
-            return data_dic
-        except Exception as e2:
-            print(f"Error abriendo o procesando el archivo NetCDF: {e2}")
-            raise
+    except Exception as e:
+        print(f"Error abriendo o procesando el archivo NetCDF: {e}")
+        raise

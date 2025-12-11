@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from config import mdb
 from datetime import datetime
+import pandas as pd
 
 client=MongoClient(mdb["uri"])
 db=client[mdb["db_name"]]
@@ -23,3 +24,14 @@ def loadIntoDB(data,control):
     except Exception as e:
         print(f"Error en la carga: {e}")
         raise
+
+def getDataFrame():
+    data=list(collection_era.find({}))
+    df=pd.DataFrame(data)
+    #eliminar variables que no necesitamos
+    df=df.drop(colums=["_id","time"])
+    #aseguramos el formato del timestampç
+    df["valid_time"]=pd.to_datetime(df["valid_time"])
+    #ordenamos el dataframe
+    df=df.sort_values(by="valid_time").reset_index(drop=True)
+    return df

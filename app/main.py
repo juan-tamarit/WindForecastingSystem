@@ -3,7 +3,9 @@
 from app.era5 import getDataERA5 
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
-from app.DBmanager import loadIntoDB
+from app.DBmanager import loadIntoDB,getDataFrame
+import numpy as np
+#from sklearn.preprocessing import StandardScaler
 
 #funciones
 def setDates(fecha_ini_dt,fecha_fin_dt):
@@ -27,5 +29,17 @@ def loadData(start,end):
         current_start=current_end+timedelta(days=1)
 #variables
 start=datetime(2024,1,1)
-end=datetime(2024,1,2)
+end=datetime(2024,1,16)
+g=9.80665
 #código
+#loadData(start,end)
+df=getDataFrame()
+
+df["elevacion_m"]= df["z"]/g
+df["wind_speed"]=np.sqrt(df["u10"]**2+df["v10"]**2)
+df["wind_dir"]=(np.degrees(np.actan2(df["u10"],df["v10"]))+360)%360
+df["wind_dir_sin"] = np.sin(np.radians(wind_dir_deg))
+df["wind_dir_cos"] = np.cos(np.radians(wind_dir_deg))
+
+features = ["u10","v10","t2m","d2m","msl","sp","tcwv","cape","blh","latitude","longitude","elevacion_m","wind_speed","wind_dir_sin","wind_dir_cos"]
+targets=["wind_speed","wind_dir"]

@@ -33,7 +33,9 @@ def getDataERA5(start_dt,end_dt):
             'boundary_layer_height',                   # altura de la capa límite
             'convective_available_potential_energy',   # CAPE
             'convective_inhibition',                   # CIN
-            'total_column_water_vapour'               # agua precipitable total
+            'total_column_water_vapour',               # agua precipitable total
+            #Datos para la orografía
+            129
         ],
         'year': years,
         'month': months,
@@ -45,7 +47,7 @@ def getDataERA5(start_dt,end_dt):
             '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
         ],
         'area': [44.0, -10.0, 36.0, 4.0],
-        'format': 'grib'
+        'data_format': 'grib'
     }
 
 

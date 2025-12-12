@@ -29,8 +29,8 @@ def getDataFrame():
     data=list(collection_era.find({}))
     df=pd.DataFrame(data)
     #eliminar variables que no necesitamos
-    df=df.drop(colums=["_id","time"])
-    #aseguramos el formato del timestampç
+    df=df.drop(columns=["_id","time"])
+    #aseguramos el formato del timestamp
     df["valid_time"]=pd.to_datetime(df["valid_time"])
     #ordenamos el dataframe
     df=df.sort_values(by="valid_time").reset_index(drop=True)

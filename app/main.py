@@ -4,9 +4,8 @@ from app.era5 import getDataERA5
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
 from app.DBmanager import loadIntoDB,getDataFrame
-from app.DFmanager import addFeatures,normaliceData,createWindows
+from app.DFmanager import addFeatures
 import torch
-from transformers import AutoModel
 
 
 #funciones
@@ -36,31 +35,8 @@ end=datetime(2024,1,16)
 #loadData(start,end)
 df=getDataFrame()
 df=addFeatures(df)
-#Columnas que se utilizaran como input y que deseamos como output
-features = ["u10","v10","t2m","d2m","msl","sp","tcwv","cape","blh","latitude","longitude","elevacion_m","wind_speed","wind_dir"]
-targets=["wind_speed","wind_dir"]
-#Normalización de los datos
-X_Scaled,Y_Scaled=normaliceData(df,features,targets)
-#Ventanas de tiempo
-X_seq,Y_seq=createWindows(X_Scaled,Y_Scaled)
-#Entrenamiento
-#modelo y optimizador
-model=AutoModel.from_pretrained("google/timesfm-1.0-200m")
-optimizer=torch.optim.Adam(model.parameters(),lr=1e-4)
-#tensores
-X_tensor=torch.tensor(X_seq,dtype=torch.floar32)
-Y_tensor=torch.tensor(Y_seq,dtype=torch.floar32)
-batch_size=16
-for epoch in range (10):
-    for i in range (0,len(X_tensor),batch_size):
-        x_batch=X_tensor[i:i+batch_size]
-        y_batch=Y_tensor[i:i+batch_size]
 
-        output=model(x_batch)
-
-        loss=((output-y_batch)**2).mean()
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-    print("Epoch: ",epoch,"Loss: ",loss.item())
+targets = ["wind_speed", "wind_dir"]
+static_reals = ["latitude", "longitude", "elevacion_m"]
+time_varying_known_reals = ["time_idx"]
+time_varying_unknown_reals = ["u10", "v10", "t2m", "d2m", "msl", "sp","tcwv", "cape", "blh","wind_speed", "wind_dir"]

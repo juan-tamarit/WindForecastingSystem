@@ -38,10 +38,10 @@ start=datetime(2024,1,1)
 end=datetime(2024,1,3)
 lats = np.arange(36.0, 44.0 + 0.001, 0.25)
 lons = np.arange(-10.0, 4.0 + 0.001, 0.25)
-z_dict = getGeoptencial()
+#z_dict = getGeoptencial()
 #código
-saveZDictMongo(z_dict)
-#loadData(start,end,lats,lons)
+#saveZDictMongo(z_dict)
+loadData(start,end,lats,lons)
 #df=getDataFrame()
 #df=addFeatures(df)
 

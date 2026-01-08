@@ -4,6 +4,7 @@ import zipfile
 import os
 from datetime import timedelta,datetime
 from config import cds
+import xarray as xr
 
 def getDataERA5(start_dt,end_dt,lat,lon):
     dataset = 'reanalysis-era5-single-levels-timeseries'

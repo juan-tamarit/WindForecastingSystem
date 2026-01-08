@@ -1,12 +1,13 @@
 #imports
 
-from app.era5 import getDataERA5 
+from app.era5 import getDataERA5,getGeoptencial
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
-from app.DBmanager import loadIntoDB,getDataFrame
+from app.DBmanager import loadIntoDB,getDataFrame,saveZDictMongo
 from app.DFmanager import addFeatures
 import torch
 from app.models.tft_model import buildTFTDataSet, buildTFTModel,trainTFT
+import numpy as np
 
 
 
@@ -16,7 +17,7 @@ def setDates(fecha_ini_dt,fecha_fin_dt):
     fecha_fin_AEMET=fecha_fin_dt.strftime("%Y-%m-%d")+"T23:59:59UTC"
     dates={"aemet":[fecha_ini_AEMET,fecha_fin_AEMET],"era5":[fecha_ini_dt,fecha_fin_dt]}
     return dates
-def loadData(start,end):
+def loadData(start,end,lats,lons):
     current_start=start
     control=1
     while current_start<=end:
@@ -26,15 +27,21 @@ def loadData(start,end):
             current_end=end
         #obtención y carga de los datos
         dates= setDates(current_start,current_end)
-        data=getDataERA5(dates["era5"][0],dates["era5"][1])
-        loadIntoDB(data,control)
+        for lat in lats:
+            for lon in lons:
+                data=getDataERA5(dates["era5"][0],dates["era5"][1],lat,lon)
+                loadIntoDB(data,control)
         #siguiente fecha
         current_start=current_end+timedelta(days=1)
 #variables
-start=datetime(2024,1,16)
-end=datetime(2024,6,30)
+start=datetime(2024,1,1)
+end=datetime(2024,1,3)
+lats = np.arange(36.0, 44.0 + 0.001, 0.25)
+lons = np.arange(-10.0, 4.0 + 0.001, 0.25)
+z_dict = getGeoptencial()
 #código
-loadData(start,end)
+saveZDictMongo(z_dict)
+#loadData(start,end,lats,lons)
 #df=getDataFrame()
 #df=addFeatures(df)
 

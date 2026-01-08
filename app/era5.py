@@ -1,79 +1,121 @@
-import xarray as xr
+import pandas as pd
+import json
+import zipfile
 import os
 from datetime import timedelta,datetime
 from config import cds
 
-def getDataERA5(start_dt,end_dt):
-    dataset = 'reanalysis-era5-single-levels'
-    #calcular días entre fecha_ini y fecha_end
-    date_list=[start_dt+timedelta(days=d) for d in range((end_dt-start_dt).days)]
-    #Generar lista
-    years = sorted(list(set([int(dt.strftime("%Y")) for dt in date_list])))
-    months = sorted(list(set([int(dt.strftime("%m")) for dt in date_list])))
-    days = sorted(list(set([int(dt.strftime("%d")) for dt in date_list])))
+def getDataERA5(start_dt,end_dt,lat,lon):
+    dataset = 'reanalysis-era5-single-levels-timeseries'
+    date_str = f"{start_dt.strftime('%Y-%m-%d')}/{end_dt.strftime('%Y-%m-%d')}"
     #creamos el request
     request = {
-        'product_type': 'reanalysis',
-        'variable': [
-            # Viento en superficie
-            '10m_u_component_of_wind',                 # componente viento Este-Oeste
-            '10m_v_component_of_wind',                 # componente viento Norte-Sur
-            '10m_wind_gust_since_previous_post_processing',  # rachas de viento a 10 m
-            # Termodinámica en superficie
-            '2m_temperature',                          # temperatura a 2 m
-            '2m_dewpoint_temperature',                 # punto de rocío a 2 m
-            'surface_pressure',                        # presión a nivel de superficie
-            'mean_sea_level_pressure',                 # presión a nivel medio del mar
-            'relative_humidity',                       # humedad relativa
-            # Nubes / radiación / precipitación
-            'cloud_cover',                             # cobertura nubosa total
-            'total_precipitation',                     # precipitación total acumulada
-            'surface_solar_radiation_downwards',       # radiación solar en superficie
-            # Estructura vertical / estabilidad
-            'boundary_layer_height',                   # altura de la capa límite
-            'convective_available_potential_energy',   # CAPE
-            'convective_inhibition',                   # CIN
-            'total_column_water_vapour',               # agua precipitable total
-            #Datos para la orografía
-            129
-        ],
-        'year': years,
-        'month': months,
-        'day': days,
-        'time': [
-            '00:00', '01:00', '02:00', '03:00', '04:00', '05:00',
-            '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
-            '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
-            '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
-        ],
-        'area': [44.0, -10.0, 36.0, 4.0],
-        'data_format': 'grib'
-    }
-
-
-    target_file = r"C:\Users\User\Downloads\era5_wind_10m.grib"
+    "variable": [
+        "2m_dewpoint_temperature",
+        "mean_sea_level_pressure",
+        "skin_temperature",
+        "surface_pressure",
+        "surface_solar_radiation_downwards",
+        "surface_thermal_radiation_downwards",
+        "2m_temperature",
+        "total_precipitation",
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "100m_u_component_of_wind",
+        "100m_v_component_of_wind",
+        "geopotential"
+    ],
+    'location': {
+        'latitude': lat,
+        'longitude': lon
+    },
+    'date':date_str,
+    'data_format': 'csv'
+}
+    target_file = r"C:\Users\User\Downloads\era5_wind_timeseries.zip"
     try:
         cds.retrieve(dataset, request, target_file)
         print(f"Datos descargados y guardados en {target_file}")
         json_data=convertIntoJson(target_file)
-        #os.remove(target_file)#borramos el archivo una vez procesado y convertido en json
+        os.remove(target_file)#borramos el archivo una vez procesado y convertido en json
         return json_data
     except Exception as e:
         print (f"Error en el proceso de optención de los datos de ERA5:{e}")
         if os.path.exists(target_file):
             try:
-                #os.remove(target_file)
+                os.remove(target_file)
                 print(f"El archivo {target_file} se ha borrado tras fallo")
             except Exception:
                 pass
-        return None
+        return {}
+
 def convertIntoJson(target_file):
-    #leer el archivo netcdf con xarray para convertirlo en json
     try:
-        ds=xr.open_dataset(target_file,engine="cfgrib",decode_times=False)
-        df=ds.to_dataframe().reset_index()
-        data_dic=df.to_dict(orient="records") #Conviertir en diccionario
+        # 1) Abrir el ZIP
+        with zipfile.ZipFile(target_file, 'r') as z:
+            # buscar el primer CSV dentro del ZIP
+            csv_names = [name for name in z.namelist() if name.lower().endswith('.csv')]
+            if not csv_names:
+                print("No se encontró ningún CSV dentro del ZIP:", z.namelist())
+                return []
+
+            csv_name = csv_names[0]
+            print("Usando CSV dentro del ZIP:", csv_name)
+
+            # 2) Leer el CSV directamente desde el ZIP
+            with z.open(csv_name) as f:
+                df = pd.read_csv(
+                    f,
+                    encoding='latin1',   # o la que haga falta, o sin encoding si no falla
+                    comment='#',
+                    engine='python',
+                    sep=',',
+                    on_bad_lines='skip'
+                )
+
+        # 3) Convertir a lista de dicts
+        df = df.dropna(subset=['time']) if 'time' in df.columns else df
+        data_dic = df.to_dict(orient='records')
         return data_dic
     except Exception as e:
-        print(f"Error abriendo o procesando el archivo NetCDF: {e}")
-        raise
+        print(f"Error abriendo o procesando el ZIP/CSV: {e}")
+        return []
+    
+def getGeoptencial():
+    dataset = 'reanalysis-era5-single-levels'
+    request={
+        'product_type': 'reanalysis',
+            'variable': ['geopotential'],
+            'year': '2024',
+            'month': '01',
+            'day': '01',
+            'time': '00:00',
+            'area': [44, -10, 36, 4],
+            'format': 'netcdf',
+    }
+    target_file='iberia_geopotencial.nc'
+    try:
+        cds.retrieve(dataset, request, target_file)
+        print(f"Datos Geopotenciales descargados y guardados en {target_file}")
+        z_dic=buildZDict(target_file)
+        os.remove(target_file)#borramos el archivo una vez procesado y convertido en json
+        return z_dic
+    except Exception as e:
+        print (f"Error en el proceso de optención de los datos geopotenciales de ERA5:{e}")
+        if os.path.exists(target_file):
+            try:
+                os.remove(target_file)
+                print(f"El archivo {target_file} se ha borrado tras fallo")
+            except Exception:
+                pass
+        return {}
+    
+def buildZDict(target_file):
+    ds = xr.open_dataset(target_file)
+    z = ds['z']
+    z_dict = {}
+    for lat in z.latitude.values:
+        for lon in z.longitude.values:
+            z_val = float(z.sel(latitude=lat, longitude=lon))
+            z_dict[(float(lat), float(lon))] = z_val
+    return z_dict

@@ -14,6 +14,29 @@ import time
 
 
 #funciones
+
+# -----------------------------------------------------------------------------
+# Construcción de rangos temporales coherentes para AEMET y ERA5
+#
+# Objetivo:
+# - A partir de dos datetimes (inicio y fin) generar:
+#     · Un rango de fechas en formato string para las peticiones a AEMET
+#     · Un rango de datetimes "crudos" para las peticiones a ERA5
+#
+# Salida:
+# - Diccionario con dos entradas:
+#   1) "aemet": [fecha_ini_AEMET, fecha_fin_AEMET]
+#      - Strings en formato: "YYYY-MM-DDT00:00:00UTC" / "YYYY-MM-DDT23:59:59UTC"
+#      - Cubren el día completo en UTC para las APIs de AEMET.
+#   2) "era5": [fecha_ini_dt, fecha_fin_dt]
+#      - Datetimes originales, usados directamente en las peticiones ERA5
+#        (que ya trabajan con resolución horaria). [web:1][web:183]
+#
+# Notas:
+# - Mantener una única función de fechas ayuda a sincronizar exactamente los
+#   periodos que se piden a AEMET y ERA5, evitando desalineaciones de días.
+# -----------------------------------------------------------------------------
+
 def setDates(fecha_ini_dt,fecha_fin_dt):
     fecha_ini_AEMET=fecha_ini_dt.strftime("%Y-%m-%d")+"T00:00:00UTC"
     fecha_fin_AEMET=fecha_fin_dt.strftime("%Y-%m-%d")+"T23:59:59UTC"

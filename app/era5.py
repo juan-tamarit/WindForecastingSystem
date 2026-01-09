@@ -119,7 +119,35 @@ def convertIntoJson(target_file):
     except Exception as e:
         print(f"Error abriendo o procesando el ZIP/CSV: {e}")
         return []
-    
+
+# -----------------------------------------------------------------------------
+# Descarga del geopotencial (z) sobre la Península Ibérica en ERA5 (NetCDF)
+#
+# Objetivo:
+# - Obtener la orografía de ERA5 (geopotential en superficie, variable 'z')
+#   para toda la Península en una sola petición, usando el dataset estándar
+#   "reanalysis-era5-single-levels". [web:1]
+#
+# Detalles de la petición:
+# - product_type: 'reanalysis' (análisis horario estándar) [web:1]
+# - variable: ['geopotential'] → campo 'z' en superficie
+# - year/month/day/time: se elige un único instante (2024-01-01 00:00), ya que
+#   la orografía no cambia en el tiempo. [web:4]
+# - area: [44, -10, 36, 4] (N, W, S, E) cubre la Península Ibérica. [web:151]
+# - format: 'netcdf' para conservar la malla 2D latitude × longitude y leerla
+#   cómodamente con xarray. [web:9]
+#
+# Flujo:
+# - Lanza la petición y guarda el resultado en 'iberia_geopotencial.nc'
+# - Llama a buildZDict() para construir el diccionario (lat, lon) → z
+# - Elimina el archivo NetCDF temporal tras construir el diccionario
+#
+# Comportamiento en errores:
+# - Muestra un mensaje con la excepción
+# - Intenta borrar el archivo parcial si existe
+# - Devuelve {} para que el código cliente pueda continuar sin romperse
+# -----------------------------------------------------------------------------
+
 def getGeoptencial():
     dataset = 'reanalysis-era5-single-levels'
     request={
@@ -148,7 +176,34 @@ def getGeoptencial():
             except Exception:
                 pass
         return {}
-    
+
+# -----------------------------------------------------------------------------
+# Construcción del diccionario (lat, lon) → z a partir del NetCDF
+#
+# Objetivo:
+# - Leer el fichero NetCDF de geopotencial sobre la Península
+# - Extraer la variable 'z' (geopotential) en superficie [web:4][web:145]
+# - Construir un diccionario donde cada clave es un par (lat, lon) de la rejilla
+#   ERA5 y el valor es el geopotencial en esa celda.
+#
+# Detalles:
+# - xr.open_dataset() carga el NetCDF y expone coordenadas latitude/longitude
+#   y la variable 'z' con la malla completa. [web:9]
+# - Se recorre toda la rejilla latitude.values × longitude.values
+# - Para cada combinación (lat, lon), se selecciona z(lat, lon) y se convierte
+#   a float para poder serializarlo fácilmente (por ejemplo a Mongo/JSON)
+#
+# Uso:
+# - El diccionario resultante se puede:
+#     · Guardar directamente en Mongo (colección de orografía ERA5)
+#     · Usar en memoria para enriquecer cada serie de tiempo con su z
+#
+# Nota:
+# - Más adelante, si se necesita altitud en metros, basta con aplicar:
+#     elevacion_m = z / 9.80665
+#   en el pipeline de modelado, sin tocar la base de datos original. [web:137]
+# -----------------------------------------------------------------------------
+
 def buildZDict(target_file):
     ds = xr.open_dataset(target_file)
     z = ds['z']

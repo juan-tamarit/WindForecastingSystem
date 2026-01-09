@@ -56,6 +56,26 @@ def loadIntoDB(data,control):
     except Exception as e:
         print(f"Error en la carga: {e}")
         raise
+
+# -----------------------------------------------------------------------------
+# Persistencia del diccionario z (orografía ERA5) en MongoDB
+#
+# Objetivo:
+# - Guardar el diccionario (lat, lon) → z en una colección Mongo para:
+#     · Evitar volver a descargar el geopotencial desde ERA5
+#     · Poder reconstruirlo rápidamente en futuros procesos de carga
+#
+# Detalles:
+# - z_dict: diccionario Python con claves (lat, lon) y valores z (geopotencial)
+# - Cada entrada se inserta como un documento:
+#       { "latitude": lat, "longitude": lon, "z": z_val }
+# - collection_z: colección dedicada a la orografía ERA5 (z en superficie)
+#
+# Notas:
+# - insert_many se usa para insertar en bloque todos los documentos
+# - Si z_dict está vacío, no se realiza ninguna operación sobre MongoDB
+# -----------------------------------------------------------------------------
+
 def saveZDictMongo(z_dict):
     docs = []
     for (lat, lon), z_val in z_dict.items():
@@ -66,6 +86,26 @@ def saveZDictMongo(z_dict):
         })
     if docs:
         collection_z.insert_many(docs)
+
+# -----------------------------------------------------------------------------
+# Reconstrucción del diccionario z (lat, lon) → z desde MongoDB
+#
+# Objetivo:
+# - Leer la colección de orografía ERA5 (collection_z) y reconstruir en memoria
+#   el diccionario (lat, lon) → z para enriquecer las series de tiempo. [web:141]
+#
+# Detalles:
+# - Realiza un find() sobre collection_z seleccionando solo:
+#       latitude, longitude, z (se excluye '_id' explícitamente)
+# - Convierte latitude y longitude a float para usarlos como claves del dict
+# - Convierte z a float por consistencia con la construcción original del dict
+#
+# Uso:
+# - Llamar una vez al inicio del proceso de carga ERA5:
+#       z_dict = loadZDictMongo()
+# - Pasar z_dict a loadIntoDB o a las funciones que necesiten añadir z a los docs
+# -----------------------------------------------------------------------------
+
 def loadZDictMongo():
     z_dict = {}
     for doc in collection_z.find({}, {"_id": 0, "latitude": 1, "longitude": 1, "z": 1}):
@@ -73,6 +113,32 @@ def loadZDictMongo():
         lon = float(doc["longitude"])
         z_dict[(lat, lon)] = float(doc["z"])
     return z_dict
+
+# -----------------------------------------------------------------------------
+# Construcción del DataFrame de trabajo a partir de MongoDB (ERA5)
+#
+# Objetivo:
+# - Extraer los documentos ERA5 de collection_era y convertirlos en un
+#   DataFrame ordenado temporalmente, listo para usar en el pipeline
+#   de modelado de series de tiempo. [web:109][web:112]
+#
+# Flujo:
+# 1. Recuperar todos los documentos de collection_era como lista de dicts
+# 2. Crear un DataFrame pandas a partir de esa lista
+# 3. Eliminar columnas que no se necesitan para el modelo:
+#      - "_id": identificador interno de MongoDB
+#      - "time": campo redundante si ya se usa "valid_time" como timestamp
+# 4. Convertir "valid_time" a tipo datetime para que pandas lo trate como
+#    índice temporal válido en ordenaciones y resampling
+# 5. Ordenar el DataFrame por "valid_time" y resetear el índice
+#
+# Resultado:
+# - DataFrame con:
+#     · Columnas físicas (u10, v10, u100, v100, msl, sp, t2m, d2m, ssrd, tp, z, etc.)
+#     · Columna temporal "valid_time" en datetime
+#     · Filas ordenadas cronológicamente
+# -----------------------------------------------------------------------------
+
 def getDataFrame():
     data=list(collection_era.find({}))
     df=pd.DataFrame(data)

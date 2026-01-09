@@ -8,6 +8,8 @@ from app.DFmanager import addFeatures
 import torch
 from app.models.tft_model import buildTFTDataSet, buildTFTModel,trainTFT
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 
 
@@ -17,7 +19,15 @@ def setDates(fecha_ini_dt,fecha_fin_dt):
     fecha_fin_AEMET=fecha_fin_dt.strftime("%Y-%m-%d")+"T23:59:59UTC"
     dates={"aemet":[fecha_ini_AEMET,fecha_fin_AEMET],"era5":[fecha_ini_dt,fecha_fin_dt]}
     return dates
-def loadData(start,end,lats,lons):
+def process_point_period(start_dt, end_dt, lat, lon, control=1):
+    dates = setDates(start_dt, end_dt)
+    data = getDataERA5(dates["era5"][0], dates["era5"][1], lat, lon)
+    if not data:
+        print(f"Sin datos para punto {lat}, {lon} entre {start_dt} y {end_dt}")
+        return
+    loadIntoDB(data, control)
+    print(f"Punto {lat}, {lon} cargado para {start_dt}–{end_dt}")
+def loadData(start,end,lats,lons,max_workers=3):
     current_start=start
     control=1
     while current_start<=end:
@@ -25,14 +35,29 @@ def loadData(start,end,lats,lons):
         current_end= current_start + timedelta(days=15)
         if current_end>end:
             current_end=end
-        #obtención y carga de los datos
-        dates= setDates(current_start,current_end)
-        for lat in lats:
-            for lon in lons:
-                data=getDataERA5(dates["era5"][0],dates["era5"][1],lat,lon)
-                loadIntoDB(data,control)
-        #siguiente fecha
+        print(f"Procesando bloque {current_start}–{current_end}")
+        futures=[]
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for lat in lats:
+                for lon in lons:
+                    futures.append(
+                        executor.submit(
+                            process_point_period,
+                            current_start,
+                            current_end,
+                            float(lat),
+                            float(lon),
+                            control
+                        )
+                    )
+                    time.sleep(0.3) #para espaciar envíos a CDS
+            for f in as_completed(futures):
+                try:
+                    f.result()
+                except Exception as e:
+                    print ("Error en un punto:",e)
         current_start=current_end+timedelta(days=1)
+
 #variables
 start=datetime(2024,1,1)
 end=datetime(2024,1,3)

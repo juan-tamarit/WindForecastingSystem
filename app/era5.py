@@ -33,7 +33,7 @@ def getDataERA5(start_dt,end_dt,lat,lon):
     'date':date_str,
     'data_format': 'csv'
 }
-    target_file = r"C:\Users\User\Downloads\era5_wind_timeseries.zip"
+    target_file = fr"C:\Users\User\Downloads\era5_wind_timeseries_{lat}_{lon}.zip"
     try:
         cds.retrieve(dataset, request, target_file)
         print(f"Datos descargados y guardados en {target_file}")

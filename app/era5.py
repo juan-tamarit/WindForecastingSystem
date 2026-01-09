@@ -6,6 +6,26 @@ from datetime import timedelta,datetime
 from config import cds
 import xarray as xr
 
+# -----------------------------------------------------------------------------
+# Descarga de series temporales ERA5 para un punto (dataset time-series)
+#
+# Esta función encapsula la lógica de:
+#  - Construir la petición al dataset "reanalysis-era5-single-levels-timeseries"
+#  - Solicitar datos horarios para un rango [start_dt, end_dt]
+#  - Incluir múltiples variables físicas relevantes para viento
+#  - Descargar el ZIP (CSV interno) en disco y convertirlo a lista de dicts
+#
+# Parámetros:
+# - start_dt, end_dt: datetimes que definen el rango temporal (incluyendo ambas fechas)
+# - lat, lon: coordenadas del punto ERA5 (coinciden con la rejilla del time-series)
+#
+# Notas:
+# - data_format = 'csv' produce un ZIP con un único CSV interno
+# - convertIntoJson se encarga de abrir el ZIP, leer el CSV y devolver la lista de
+#   documentos listos para insertar en MongoDB
+# - En caso de error se devuelve una lista vacía para evitar romper el flujo
+# -----------------------------------------------------------------------------
+
 def getDataERA5(start_dt,end_dt,lat,lon):
     dataset = 'reanalysis-era5-single-levels-timeseries'
     date_str = f"{start_dt.strftime('%Y-%m-%d')}/{end_dt.strftime('%Y-%m-%d')}"
@@ -49,6 +69,24 @@ def getDataERA5(start_dt,end_dt,lat,lon):
             except Exception:
                 pass
         return {}
+
+# -----------------------------------------------------------------------------
+# Conversión del ZIP/CSV ERA5 a lista de documentos (para MongoDB)
+#
+# Esta función:
+#  - Abre el archivo ZIP generado por la API de ERA5 time-series
+#  - Localiza el primer fichero CSV contenido en el ZIP
+#  - Lee el CSV usando pandas con una configuración tolerante:
+#      * encoding='latin1' para evitar problemas de decodificación
+#      * comment='#' para ignorar líneas de metadatos/comentarios
+#      * engine='python' + on_bad_lines='skip' para saltar filas problemáticas
+#  - Elimina filas sin campo temporal 'time' (si existe esa columna)
+#  - Devuelve una lista de diccionarios (una entrada por fila del CSV)
+#
+# Uso:
+# - El resultado puede pasarse directamente a loadIntoDB para su inserción en MongoDB
+# - No se realizan transformaciones físicas aquí (solo parsing de archivo)
+# -----------------------------------------------------------------------------
 
 def convertIntoJson(target_file):
     try:

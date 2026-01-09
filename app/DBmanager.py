@@ -10,6 +10,29 @@ collection_aemet=db[mdb["collection_aemet"]]
 collection_era=db[mdb["collection_era"]]
 collection_z=db[mdb["collection_z"]]
 
+# -----------------------------------------------------------------------------
+# Carga de datos en MongoDB (ERA5, AEMET u otros)
+#
+# Esta función centraliza la inserción en distintas colecciones según "control":
+#  - control == 0: datos AEMET (observaciones)
+#      * Convierte 'fecha' (string) a datetime
+#      * Inserta documentos en collection_aemet
+#
+#  - control == 1: datos ERA5 time-series
+#      * Convierte 'valid_time' (string) a datetime
+#      * Enriquecimiento con geopotencial z (si existe z_dict en Mongo):
+#          · Usa latitude / longitude del doc
+#          · Redondea coordenadas para casarlas con la rejilla del diccionario
+#          · Añade campo 'z' al documento si hay coincidencia
+#      * Inserta documentos en collection_era
+#
+#  - en cualquier otro caso: inserción masiva directa en "coleccion"
+#
+# Comportamiento en errores:
+# - Envuelve toda la lógica en try/except
+# - Muestra un mensaje de error y relanza la excepción para depuración
+# -----------------------------------------------------------------------------
+
 def loadIntoDB(data,control):
     try:
         z_dict=loadZDictMongo()

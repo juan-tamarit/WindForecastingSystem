@@ -19,7 +19,26 @@ def setDates(fecha_ini_dt,fecha_fin_dt):
     fecha_fin_AEMET=fecha_fin_dt.strftime("%Y-%m-%d")+"T23:59:59UTC"
     dates={"aemet":[fecha_ini_AEMET,fecha_fin_AEMET],"era5":[fecha_ini_dt,fecha_fin_dt]}
     return dates
-def process_point_period(start_dt, end_dt, lat, lon, control=1):
+
+# -----------------------------------------------------------------------------
+# Procesamiento de un punto y periodo (unidad de trabajo paralelizable)
+#
+# Esta función define la "tarea mínima" que se ejecutará en paralelo:
+#  - Calcula las fechas efectivas a solicitar para ERA5 (setDates)
+#  - Llama a getDataERA5 para el punto (lat, lon) y el rango [start_dt, end_dt]
+#  - Si se reciben datos, los inserta en Mongo mediante loadIntoDB
+#
+# Parámetros:
+# - start_dt, end_dt: rango temporal a procesar para un punto
+# - lat, lon: coordenadas del punto de rejilla ERA5
+# - control: selector de rama en loadIntoDB (1 para ERA5)
+#
+# Uso en paralelo:
+# - Esta función es la que se pasa a ThreadPoolExecutor.submit()
+#   en la versión paralela del bucle sobre lats × lons
+# -----------------------------------------------------------------------------
+
+def processPointPeriod(start_dt, end_dt, lat, lon, control=1):
     dates = setDates(start_dt, end_dt)
     data = getDataERA5(dates["era5"][0], dates["era5"][1], lat, lon)
     if not data:
@@ -27,6 +46,30 @@ def process_point_period(start_dt, end_dt, lat, lon, control=1):
         return
     loadIntoDB(data, control)
     print(f"Punto {lat}, {lon} cargado para {start_dt}–{end_dt}")
+
+# -----------------------------------------------------------------------------
+# Versión paralela del cargador ERA5 (ThreadPoolExecutor)
+#
+# Objetivo:
+# - Acelerar la carga de medio año / un año de ERA5 sobre una rejilla de puntos,
+#   manteniendo un número razonable de peticiones simultáneas al CDS.
+#
+# Estrategia:
+# - Divide el periodo global [start, end] en bloques de ~15 días (como loadData)
+# - Para cada bloque, lanza tareas process_point_period en paralelo con un
+#   ThreadPoolExecutor limitado por max_workers
+# - Espacia ligeramente el envío de tareas para no saturar la cola del CDS
+#
+# Parámetros:
+# - start, end: rango temporal global de la carga
+# - lats, lons: rejilla de latitudes/longitudes
+# - max_workers: máximo de peticiones concurrentes al CDS (recomendado 3)
+#
+# Notas:
+# - Usa as_completed para capturar errores por punto sin detener el resto
+# - Diseñado para convivir con el diccionario z (orografía) ya persistido en Mongo
+# -----------------------------------------------------------------------------
+
 def loadData(start,end,lats,lons,max_workers=3):
     current_start=start
     control=1
@@ -42,7 +85,7 @@ def loadData(start,end,lats,lons,max_workers=3):
                 for lon in lons:
                     futures.append(
                         executor.submit(
-                            process_point_period,
+                            processPointPeriod,
                             current_start,
                             current_end,
                             float(lat),

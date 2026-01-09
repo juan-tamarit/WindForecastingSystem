@@ -45,7 +45,7 @@ def saveZDictMongo(z_dict):
         collection_z.insert_many(docs)
 def loadZDictMongo():
     z_dict = {}
-    for doc in collection_orog.find({}, {"_id": 0, "latitude": 1, "longitude": 1, "z": 1}):
+    for doc in collection_z.find({}, {"_id": 0, "latitude": 1, "longitude": 1, "z": 1}):
         lat = float(doc["latitude"])
         lon = float(doc["longitude"])
         z_dict[(lat, lon)] = float(doc["z"])

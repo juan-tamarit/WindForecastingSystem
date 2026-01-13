@@ -1,8 +1,9 @@
+import lightning.pytorch as pl
 from pytorch_forecasting import TimeSeriesDataSet
-from pytorch_forecasting.models import TemporalFusionTransformer
+from pytorch_forecasting import TemporalFusionTransformer
 from pytorch_forecasting.metrics import QuantileLoss
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
+from lightning.pytorch.loggers import TensorBoardLogger
 
 # -----------------------------------------------------------------------------
 # Creación del TimeSeriesDataSet (PyTorch Forecasting - TFT)
@@ -37,6 +38,11 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 # -----------------------------------------------------------------------------
 
 def buildTFTDataSet(df,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length):
+    min_len = max_encoder_length + max_prediction_length
+
+    valid_locations = (df.groupby("location_id").size().loc[lambda x: x >= min_len].index)
+    df = df[df["location_id"].isin(valid_locations)]
+
     training=TimeSeriesDataSet(
         df,
         time_idx="time_idx",
@@ -81,7 +87,8 @@ def buildTFTModel(training):
     dropout=0.1,
     hidden_continuous_size=16,
     loss=QuantileLoss(),
-    log_interval=10,
+    log_interval=-1,        # no log de interpretación en train
+    log_val_interval=-1,    # no log de interpretación en val
     reduce_on_plateau_patience=4,
     )
     return tft
@@ -111,30 +118,38 @@ def buildTFTModel(training):
 # - La QuantileLoss permite predicción probabilística, muy adecuada para datos meteorológicos
 # ---------------------------------------------
 
-def trainTFT(training,tft,batch_size,max_epochs):
-    train_dataloader=training.to_dataloade(
+def trainTFT(training,validation,tft,batch_size,max_epochs):
+    train_dataloader=training.to_dataloader(
     train=True,
     batch_size=batch_size,
     num_workers=0
     )
 
+    val_dataloader = validation.to_dataloader(
+        train=False,
+        batch_size=batch_size,
+        num_workers=0
+    )
+
     early_stop_callback = EarlyStopping(
-        monitor="train_loss",
-        patience=5,
+        monitor="val_loss",
+        patience=3,
         min_delta=1e-4,
         mode="min"
     )
-    lr_monitor = LearningRateMonitor(logging_interval="epoch")
+    lr_logger = LearningRateMonitor()
+    logger = TensorBoardLogger("lightning_logs")
 
-    trainer = Trainer(
+    trainer = pl.Trainer(
         max_epochs=max_epochs,
-        accelerator="cpu",
+        accelerator="auto",
         gradient_clip_val=0.1,
-        callbacks=[early_stop_callback, lr_monitor],
-        log_every_n_steps=10
+        callbacks=[early_stop_callback, lr_logger],
+        logger=logger
     )
 
     trainer.fit(
         tft,
-        train_dataloaders=train_dataloader
+        train_dataloaders=train_dataloader,
+        val_dataloaders=val_dataloader
     )

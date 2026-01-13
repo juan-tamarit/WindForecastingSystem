@@ -10,6 +10,7 @@ from app.models.tft_model import buildTFTDataSet, buildTFTModel,trainTFT
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+from pytorch_forecasting import TimeSeriesDataSet
 
 
 
@@ -102,6 +103,7 @@ def loadData(start,end,lats,lons,max_workers=3):
         if current_end>end:
             current_end=end
         print(f"Procesando bloque {current_start}–{current_end}")
+        #hilos
         futures=[]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for lat in lats:
@@ -122,29 +124,50 @@ def loadData(start,end,lats,lons,max_workers=3):
                     f.result()
                 except Exception as e:
                     print ("Error en un punto:",e)
+        #siguiente ventana temporal
         current_start=current_end+timedelta(days=1)
 
 #variables
-start=datetime(2024,1,1)
-end=datetime(2024,1,3)
-lats = np.arange(36.0, 44.0 + 0.001, 0.25)
-lons = np.arange(-10.0, 4.0 + 0.001, 0.25)
+#start=datetime(2024,2,20)
+#end=datetime(2024,2,28)
+#lats = np.arange(36, 44.0 + 0.001, 0.25)
+#lons = np.arange(-10, 4.0 + 0.001, 0.25)
 #z_dict = getGeoptencial()
 #código
 #saveZDictMongo(z_dict)
-loadData(start,end,lats,lons)
-#df=getDataFrame()
-#df=addFeatures(df)
+#loadData(start,end,lats,lons)
+df=getDataFrame()
+df=addFeatures(df)
 
-#targets = ["wind_speed", "wind_dir_sin","wind_dir_cos"]
-#static_reals = ["latitude", "longitude", "elevacion_m"]
-#time_varying_known_reals = ["time_idx"]
-#time_varying_unknown_reals = ["u10", "v10", "t2m", "d2m", "msl", "sp","tcwv", "cape", "blh","wind_speed", "wind_dir"]
-#max_encoder_length=48
-#max_prediction_length=6
-#batch_size=64
-#max_epochs=30
+targets = ["wind_speed", "wind_dir_sin","wind_dir_cos"]
+static_reals = ["latitude", "longitude", "elevacion_m"]
+time_varying_known_reals = ["time_idx"]
+time_varying_unknown_reals = ["wind_speed", "wind_dir_sin", "wind_dir_cos","u10","v10","u100","v100","t2m","d2m","skt","sp","msl","tp","ssrd","strd"]
+max_encoder_length=24 #para probar
+max_prediction_length=1 #para probar
+batch_size=32#para probar
+max_epochs=3#para probar
 
-#training=buildTFTDataSet(df,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
-#tft=buildTFTModel(training)
-#trainTFT(training,tft)
+print(df.columns)
+print(df.dtypes[["valid_time", "time_idx", "location_id"]])
+print(df[["wind_speed", "wind_dir_sin", "wind_dir_cos"]].describe())
+
+
+# 1) split temporal simple
+max_time_idx = df["time_idx"].max()
+training_cutoff = int(max_time_idx * 0.8)
+df_train = df[df["time_idx"] <= training_cutoff]
+df_val = df[df["time_idx"] > training_cutoff]
+# 2) dataset de training
+training=buildTFTDataSet(df,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
+# 3) dataset de validación reutilizando normalizaciones/encoders
+
+validation = TimeSeriesDataSet.from_dataset(
+    training,
+    df_val,
+    min_prediction_idx=df_val["time_idx"].min(),
+    stop_randomization=True,
+)
+
+tft=buildTFTModel(training)
+trainTFT(training,validation,tft,batch_size,max_epochs)

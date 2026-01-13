@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.preprocessing import StandardScaler
 
 # -----------------------------------------------------------------------------
 # Enriquecimiento del DataFrame con variables derivadas para el modelo
@@ -51,6 +50,6 @@ def addFeatures(df):
     df["wind_dir"]=(np.degrees(np.arctan2(df["u10"],df["v10"]))+360)%360
     df["wind_dir_sin"] = np.sin(np.radians(df["wind_dir"]))
     df["wind_dir_cos"] = np.cos(np.radians(df["wind_dir"]))
-    df["time_idx"] = ((df["valid_time"] - df["valid_time"].min()) // 3600).astype(int)
+    df["time_idx"] = ((df["valid_time"] - df["valid_time"].min()).dt.total_seconds() // 3600).astype(int)
     df["location_id"] = df.groupby(["latitude", "longitude"]).ngroup()
     return df

@@ -143,7 +143,7 @@ def getDataFrame():
     data=list(collection_era.find({}))
     df=pd.DataFrame(data)
     #eliminar variables que no necesitamos
-    df=df.drop(columns=["_id","time"])
+    df=df.drop(columns=["_id"])
     #aseguramos el formato del timestamp
     df["valid_time"]=pd.to_datetime(df["valid_time"])
     #ordenamos el dataframe

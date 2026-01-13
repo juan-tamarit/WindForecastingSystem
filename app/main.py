@@ -159,7 +159,7 @@ training_cutoff = int(max_time_idx * 0.8)
 df_train = df[df["time_idx"] <= training_cutoff]
 df_val = df[df["time_idx"] > training_cutoff]
 # 2) dataset de training
-training=buildTFTDataSet(df,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
+training=buildTFTDataSet(df_train,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
 # 3) dataset de validación reutilizando normalizaciones/encoders
 
 validation = TimeSeriesDataSet.from_dataset(

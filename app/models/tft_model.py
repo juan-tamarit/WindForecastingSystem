@@ -2,7 +2,7 @@ import lightning.pytorch as pl
 from pytorch_forecasting import TimeSeriesDataSet
 from pytorch_forecasting import TemporalFusionTransformer
 from pytorch_forecasting.metrics import QuantileLoss
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 
 # -----------------------------------------------------------------------------
@@ -133,28 +133,47 @@ def buildTFTModel(training):
     return tft
 
 # ---------------------------------------------
-# train_dataloader:
-#   - Convierte el TimeSeriesDataSet en un DataLoader de PyTorch.
-#   - Se encarga de generar los batches de entrenamiento.
-#   - Cada batch contiene ventanas temporales creadas internamente por TFT
-#     (encoder + decoder) a partir de time_idx y location_id.
-#   - batch_size define cuántas secuencias se procesan en paralelo.
-#   - num_workers controla los procesos para la carga de datos (0 = seguro en Windows).
-# En este bloque se conecta el DataLoader con el modelo Temporal Fusion Transformer (TFT)
-# utilizando PyTorch Lightning Trainer, que gestiona automáticamente el bucle de entrenamiento,
-# la retropropagación, logging, early stopping y optimización.
+# Entrenamiento del modelo TFT con PyTorch Lightning
 #
-# Parámetros clave:
-# - max_epochs=30: número máximo de epochs (el entrenamiento puede terminar antes si se activa early stopping)
-# - accelerator="cpu"/"gpu": define dónde se entrena (CPU o GPU)
-# - gradient_clip_val=0.1: recorta los gradientes para evitar inestabilidad numérica
-# - EarlyStopping: detiene el entrenamiento si la loss no mejora tras cierto número de epochs
-# - LearningRateMonitor: registra cambios en el learning rate durante el entrenamiento
+# 1) DataLoaders:
+# - train_dataloader y val_dataloader convierten los TimeSeriesDataSet
+#   de entrenamiento y validación en DataLoaders de PyTorch.
+# - Generan batches de ventanas temporales (encoder + decoder) a partir
+#   de time_idx y location_id, listas para el TFT.
+# - batch_size controla cuántas secuencias se procesan en paralelo y
+#   num_workers el número de procesos de carga (0 es lo más seguro en Windows). [web:354]
+#
+# 2) Callbacks:
+# - EarlyStopping:
+#   · monitor="val_loss": observa la pérdida de validación.
+#   · patience=3, min_delta=1e-4: detiene el entrenamiento cuando la mejora
+#     en val_loss deja de ser significativa durante varios epochs.
+# - LearningRateMonitor:
+#   · Registra la evolución del learning rate durante el entrenamiento.
+# - ModelCheckpoint:
+#   · dirpath="checkpoints": carpeta donde se guardan los checkpoints.
+#   · filename="tft-{epoch:02d}-{val_loss:.4f}": nombre con epoch y val_loss.
+#   · monitor="val_loss", mode="min": guarda el mejor modelo según val_loss.
+#   · save_top_k=1: conserva solo el mejor.
+#   · save_last=True: opcionalmente guarda también el último epoch. [web:362]
+#
+# 3) Logger:
+# - TensorBoardLogger("lightning_logs") registra métricas y curvas
+#   (loss, val_loss, learning rate, etc.) para visualizarlas con TensorBoard. [web:300]
+#
+# 4) Trainer:
+# - max_epochs: número máximo de epochs (el early stopping puede cortar antes).
+# - accelerator="auto": selecciona CPU o GPU según disponibilidad.
+# - gradient_clip_val=0.1: recorta gradientes para evitar explosiones. [web:371]
+# - callbacks=[...]: integra EarlyStopping, LearningRateMonitor y ModelCheckpoint.
+# - logger=logger: activa el logging de métricas durante train y val.
 #
 # Ventajas:
-# - No es necesario normalizar manualmente ni crear ventanas: TFT gestiona internamente estas operaciones
-# - Permite entrenar múltiples series temporales con distintos location_id de forma eficiente
-# - La QuantileLoss permite predicción probabilística, muy adecuada para datos meteorológicos
+# - Lightning gestiona automáticamente el bucle de entrenamiento,
+#   validación, logging y guardado del mejor modelo.
+# - No es necesario escribir a mano la lógica de epochs, backprop
+#   ni el guardado de checkpoints; se controla todo desde Trainer +
+#   callbacks manteniendo el código del modelo limpio.
 # ---------------------------------------------
 
 def trainTFT(training,validation,tft,batch_size,max_epochs):
@@ -179,11 +198,20 @@ def trainTFT(training,validation,tft,batch_size,max_epochs):
     lr_logger = LearningRateMonitor()
     logger = TensorBoardLogger("lightning_logs")
 
+    checkpoint_callback=ModelCheckpoint(
+        dirpath="checkpoints",
+        filename="tft-{epoch:02d}-{val_loss:.4f}",
+        monitor="val_loss",
+        mode="min",
+        save_top_k=1,
+        save_last=True
+    )
+
     trainer = pl.Trainer(
         max_epochs=max_epochs,
         accelerator="auto",
         gradient_clip_val=0.1,
-        callbacks=[early_stop_callback, lr_logger],
+        callbacks=[early_stop_callback, lr_logger,checkpoint_callback],
         logger=logger
     )
 
@@ -192,3 +220,4 @@ def trainTFT(training,validation,tft,batch_size,max_epochs):
         train_dataloaders=train_dataloader,
         val_dataloaders=val_dataloader
     )
+    return checkpoint_callback

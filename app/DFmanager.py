@@ -53,3 +53,31 @@ def addFeatures(df):
     df["time_idx"] = ((df["valid_time"] - df["valid_time"].min()).dt.total_seconds() // 3600).astype(int)
     df["location_id"] = df.groupby(["latitude", "longitude"]).ngroup()
     return df
+
+# -----------------------------------------------------------------------------
+# División temporal del DataFrame en entrenamiento y validación
+#
+# Objetivo:
+# - Separar el histórico en dos subconjuntos respetando el orden temporal,
+#   de forma que la validación use siempre datos posteriores al entrenamiento.
+#
+# Criterio de división:
+# - Se toma el máximo índice temporal disponible (max_time_idx).
+# - training_cutoff = int(max_time_idx * train_fact)
+#   · train_fact = 0.8 → 80 % del rango temporal para entrenamiento,
+#     20 % final para validación.
+# - Todas las filas con time_idx <= training_cutoff se usan para entrenar.
+# - Todas las filas con time_idx  > training_cutoff se reservan para validar.
+#
+# Ventajas:
+# - Evita fuga de información (no se entrena con datos que luego se validan).
+# - Es coherente con problemas de forecasting donde el tiempo tiene una dirección
+#   clara y no se debe barajar aleatoriamente el conjunto de datos. [web:355]
+# -----------------------------------------------------------------------------
+
+def splitDataFrame(df,train_fact):
+    max_time_idx = df["time_idx"].max()
+    training_cutoff = int(max_time_idx * train_fact)
+    df_train = df[df["time_idx"] <= training_cutoff]
+    df_val = df[df["time_idx"] > training_cutoff]
+    return df_train,df_val

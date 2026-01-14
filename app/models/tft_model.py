@@ -60,6 +60,45 @@ def buildTFTDataSet(df,targets,static_reals,time_varying_known_reals,time_varyin
     )
     return training
 
+# -----------------------------------------------------------------------------
+# Creación del TimeSeriesDataSet de validación a partir del de entrenamiento
+#
+# Objetivo:
+# - Generar el dataset de validación reutilizando toda la configuración
+#   del TimeSeriesDataSet de entrenamiento (escalados, encoders, etc.).
+#
+# Entrada:
+# - training: TimeSeriesDataSet ya construido sobre df_train.
+#             Contiene la definición completa del problema:
+#             targets, group_ids, longitudes de ventana, escalados, etc.
+# - df_val: DataFrame con la parte final del histórico (zona de validación),
+#           con las mismas columnas y esquema que df_train.
+#
+# Implementación:
+# - TimeSeriesDataSet.from_dataset(training, df_val, ...)
+#   · Copia la configuración del dataset de entrenamiento.
+#   · Recalcula solo los índices / ventanas sobre df_val. [web:354][web:358]
+# - min_prediction_idx:
+#   · Se fija en el mínimo time_idx de df_val para garantizar que
+#     la validación se hace exclusivamente sobre el bloque temporal de test.
+# - stop_randomization=True:
+#   · Desactiva cualquier aleatorización interna en la generación de ejemplos,
+#     haciendo la evaluación determinista y más interpretable. [web:358]
+#
+# Resultado:
+# - Un TimeSeriesDataSet de validación perfectamente alineado con training,
+#   listo para usarse en el val_dataloader del Trainer.
+# -----------------------------------------------------------------------------
+
+def buildValidation(training,df_val):
+    validation = TimeSeriesDataSet.from_dataset(
+        training,
+        df_val,
+        min_prediction_idx=df_val["time_idx"].min(),
+        stop_randomization=True,
+    )
+    return validation
+
 # -------------------------------------------------------------
 # TemporalFusionTransformer.from_dataset:
 #   - Inicializa el modelo TFT utilizando la estructura del dataset.

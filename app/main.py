@@ -4,9 +4,9 @@ from app.era5 import getDataERA5,getGeoptencial
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
 from app.DBmanager import loadIntoDB,getDataFrame,saveZDictMongo
-from app.DFmanager import addFeatures
+from app.DFmanager import addFeatures,splitDataFrame
 import torch
-from app.models.tft_model import buildTFTDataSet, buildTFTModel,trainTFT
+from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
@@ -128,14 +128,17 @@ def loadData(start,end,lats,lons,max_workers=3):
         current_start=current_end+timedelta(days=1)
 
 #variables
-#start=datetime(2024,2,20)
-#end=datetime(2024,2,28)
+#start=datetime(2024,2,29)
+#end=datetime(2024,3,31)
 #lats = np.arange(36, 44.0 + 0.001, 0.25)
 #lons = np.arange(-10, 4.0 + 0.001, 0.25)
 #z_dict = getGeoptencial()
+
 #código
+
 #saveZDictMongo(z_dict)
 #loadData(start,end,lats,lons)
+
 df=getDataFrame()
 df=addFeatures(df)
 
@@ -152,22 +155,9 @@ print(df.columns)
 print(df.dtypes[["valid_time", "time_idx", "location_id"]])
 print(df[["wind_speed", "wind_dir_sin", "wind_dir_cos"]].describe())
 
-
-# 1) split temporal simple
-max_time_idx = df["time_idx"].max()
-training_cutoff = int(max_time_idx * 0.8)
-df_train = df[df["time_idx"] <= training_cutoff]
-df_val = df[df["time_idx"] > training_cutoff]
-# 2) dataset de training
+train_fact=0.8
+df_train,df_val=splitDataFrame(df,train_fact)
 training=buildTFTDataSet(df_train,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
-# 3) dataset de validación reutilizando normalizaciones/encoders
-
-validation = TimeSeriesDataSet.from_dataset(
-    training,
-    df_val,
-    min_prediction_idx=df_val["time_idx"].min(),
-    stop_randomization=True,
-)
-
+validation=buildValidation(training,df_val)
 tft=buildTFTModel(training)
 trainTFT(training,validation,tft,batch_size,max_epochs)

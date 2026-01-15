@@ -1,16 +1,17 @@
 #imports
-
+import torch
+import numpy as np
+import time
+import math
 from app.era5 import getDataERA5,getGeoptencial
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
 from app.DBmanager import loadIntoDB,getDataFrame,saveZDictMongo
 from app.DFmanager import addFeatures,splitDataFrame
-import torch
 from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT,loadBestModel
-import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 from pytorch_forecasting import TimeSeriesDataSet
+from pytorch_forecasting.metrics import MAE
 
 
 
@@ -163,3 +164,18 @@ tft=buildTFTModel(training)
 checkpoint_callback=trainTFT(training,validation,tft,batch_size,max_epochs)
 best_checkpoint_path=checkpoint_callback.best_model_path
 best_tft=loadBestModel(best_checkpoint_path)
+
+val_dataloader=validation.to_dataloader(
+    train=False,
+    batch_size=batch_size,
+    num_worker=0
+)
+
+predictions=best_tft.predict(
+    val_dataloader,
+    return_y=True,
+    trainer_kwargs=dict(acelerator="cpu")
+)
+
+y_pred=predictions.output #tensor de predicciones
+y_tru=predictions.y #tensor de con los datos reales

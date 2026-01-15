@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from app.DBmanager import loadIntoDB,getDataFrame,saveZDictMongo
 from app.DFmanager import addFeatures,splitDataFrame
 import torch
-from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT
+from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT,loadBestModel
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
@@ -160,4 +160,6 @@ df_train,df_val=splitDataFrame(df,train_fact)
 training=buildTFTDataSet(df_train,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
 validation=buildValidation(training,df_val)
 tft=buildTFTModel(training)
-chekpoint=trainTFT(training,validation,tft,batch_size,max_epochs)
+checkpoint_callback=trainTFT(training,validation,tft,batch_size,max_epochs)
+best_checkpoint_path=checkpoint_callback.best_model_path
+best_tft=loadBestModel(best_checkpoint_path)

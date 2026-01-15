@@ -221,3 +221,38 @@ def trainTFT(training,validation,tft,batch_size,max_epochs):
         val_dataloaders=val_dataloader
     )
     return checkpoint_callback
+
+# -------------------------------------------------------------
+# Carga del mejor modelo TFT desde un checkpoint
+#
+# Objetivo:
+# - Reconstruir el modelo TemporalFusionTransformer tal y como fue
+#   guardado durante el entrenamiento (weights, arquitectura y
+#   configuración asociada al TimeSeriesDataSet).
+#
+# Parámetros:
+# - checkpoint_path (str):
+#     Ruta completa al archivo .ckpt que contiene el mejor modelo,
+#     típicamente obtenido con:
+#       best_checkpoint_path = checkpoint_callback.best_model_path
+#
+# Comportamiento:
+# - TemporalFusionTransformer.load_from_checkpoint(checkpoint_path)
+#     Carga los pesos y la configuración del modelo desde el fichero
+#     de checkpoint.
+# - model.eval()
+#     Pone el modelo en modo evaluación (no entrenamiento), desactivando
+#     comportamientos específicos de train como dropout y evitando que
+#     se sigan actualizando estadísticas internas.
+#
+# Uso típico:
+# - Tras entrenar con trainTFT(...), obtener la ruta del mejor modelo:
+#       best_checkpoint_path = checkpoint_callback.best_model_path
+# - Cargar el modelo listo para inferencia o cálculo de métricas:
+#       best_tft = loadBestModel(best_checkpoint_path)
+# -------------------------------------------------------------
+
+def loadBestModel(checkpoint_path):
+    model=TemporalFusionTransformer.load_from_checkpoint(checkpoint_path)
+    model.eval()
+    return model

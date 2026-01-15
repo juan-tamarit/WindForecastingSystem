@@ -178,4 +178,17 @@ predictions=best_tft.predict(
 )
 
 y_pred=predictions.output #tensor de predicciones
-y_tru=predictions.y #tensor de con los datos reales
+y_true=predictions.y #tensor de con los datos reales
+
+y_pred_flat=y_pred.float().reshape(-1)
+y_true_flat=y_true.float().reshape(-1)
+
+mae=torch.mean(torch.abs(y_true_flat-y_pred_flat)).item()
+rmse=math.sqrt(torch.mean((y_true_flat-y_pred_flat)**2).item())
+
+epsilon=1e-6
+mape=torch.mean(torch.abs((y_true_flat-y_pred_flat)/(y_true_flat+epsilon))).item()*100
+
+print(f"MAE  : {mae:.4f}")
+print(f"RMSE : {rmse:.4f}")
+print(f"MAPE : {mape:.2f}%")

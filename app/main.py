@@ -172,18 +172,20 @@ best_tft=loadBestModel(best_checkpoint_path)
 val_dataloader=validation.to_dataloader(
     train=False,
     batch_size=batch_size,
-    num_worker=0
+    num_workers=0
 )
 
 predictions=best_tft.predict(
     val_dataloader,
     return_y=True,
     return_x=True,
+    mode="raw",
     trainer_kwargs=dict(accelerator="cpu")
 )
 
 y_pred=predictions.output #tensor de predicciones
 y_true=predictions.y #tensor de con los datos reales
+x_raw=predictions.x
 
 y_pred_flat=y_pred.float().reshape(-1)
 y_true_flat=y_true.float().reshape(-1)
@@ -201,17 +203,10 @@ print(f"MAPE : {mape:.2f}%")
 #Crear visualizaciones:
 
 #serie real vs predicha
-raw_predictions=best_tft.predict(
-    val_dataloader,
-    mode="raw",
-    return_x="True",
-    trainer_kwargs=dict(accelerator="cpu")
-)
-
 for idx in range(3): #tres es un ejemplo
     fig=best_tft.plot_prediction(
-        raw_predictions.x,
-        raw_predictions.output,
+        x_raw,
+        y_pred,
         idx=idx,
         add_loss_to_title=True, #añade la loss al titulo, no es obligatorio
         show_future_observed=True

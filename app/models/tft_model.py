@@ -253,6 +253,6 @@ def trainTFT(training,validation,tft,batch_size,max_epochs):
 # -------------------------------------------------------------
 
 def loadBestModel(checkpoint_path):
-    model=TemporalFusionTransformer.load_from_checkpoint(checkpoint_path)
+    model=TemporalFusionTransformer.load_from_checkpoint(checkpoint_path,weights_only=False) # weights_only=False permite explícitamente la clase MultiNormalizer
     model.eval()
     return model

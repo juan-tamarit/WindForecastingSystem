@@ -4,6 +4,8 @@ import numpy as np
 import time
 import math
 import matplotlib.pyplot as plt
+import warnings #el asunto de los warnings
+from sklearn.exceptions import DataConversionWarning #el asunto de los warnings
 from app.era5 import getDataERA5,getGeoptencial
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
@@ -153,7 +155,7 @@ time_varying_unknown_reals = ["wind_speed", "wind_dir_sin", "wind_dir_cos","u10"
 max_encoder_length=24 #para probar
 max_prediction_length=1 #para probar
 batch_size=32#para probar
-max_epochs=3#para probar
+max_epochs=1#para probar
 
 print(df.columns)
 print(df.dtypes[["valid_time", "time_idx", "location_id"]])
@@ -161,9 +163,25 @@ print(df[["wind_speed", "wind_dir_sin", "wind_dir_cos"]].describe())
 
 train_fact=0.8
 df_train,df_val=splitDataFrame(df,train_fact)
-training=buildTFTDataSet(df_train,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
-validation=buildValidation(training,df_val)
+# solo para la prueba------------------------------------------------------------------
+# orden + índice limpio
+df_train = df_train.sort_values(["location_id", "time_idx"]).reset_index(drop=True)
+df_val   = df_val.sort_values(["location_id", "time_idx"]).reset_index(drop=True)
+
+# usamos un subconjunto pequeño de entrenamiento
+df_train_small = df_train.head(5000).reset_index(drop=True)
+
+# nos quedamos SOLO con los mismos location_id en validación
+train_locations = df_train_small["location_id"].unique()
+df_val_filtered = df_val[df_val["location_id"].isin(train_locations)].reset_index(drop=True)
+
+# subconjunto pequeño de validación
+df_val_small = df_val_filtered.head(2000).reset_index(drop=True)
+#---------------------------------------------------------------------------------------
+training=buildTFTDataSet(df_train_small,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
+validation=buildValidation(training,df_val_small)
 tft=buildTFTModel(training)
+warnings.filterwarnings("ignore",message="X does not have valid feature names, but StandardScaler was fitted with feature names") #el asunto de los warnings
 checkpoint_callback=trainTFT(training,validation,tft,batch_size,max_epochs)
 best_checkpoint_path=checkpoint_callback.best_model_path
 best_tft=loadBestModel(best_checkpoint_path)
@@ -183,23 +201,30 @@ predictions=best_tft.predict(
     trainer_kwargs=dict(accelerator="cpu")
 )
 
-y_pred=predictions.output #tensor de predicciones
-y_true=predictions.y #tensor de con los datos reales
+y_pred_list = predictions.output["prediction"]   # o predictions.output.prediction
+y_true_list = predictions.y
 x_raw=predictions.x
 
-y_pred_flat=y_pred.float().reshape(-1)
-y_true_flat=y_true.float().reshape(-1)
+metrics_per_target = {}
 
-mae=torch.mean(torch.abs(y_true_flat-y_pred_flat)).item()
-rmse=math.sqrt(torch.mean((y_true_flat-y_pred_flat)**2).item())
+for i, name in enumerate(targets):
+    y_pred_t = y_pred_list[i].float().reshape(-1)
+    y_true_tensor = y_true_list[i][0]           # nos quedamos con el tensor
+    y_true_t = y_true_tensor.float().reshape(-1)
 
-epsilon=1e-6
-mape=torch.mean(torch.abs((y_true_flat-y_pred_flat)/(y_true_flat+epsilon))).item()*100
+    mae_t = torch.mean(torch.abs(y_true_t - y_pred_t)).item()
+    rmse_t = math.sqrt(torch.mean((y_true_t - y_pred_t) ** 2).item())
+    epsilon = 1e-6
+    mape_t = torch.mean(torch.abs((y_true_t - y_pred_t) /(y_true_t + epsilon))).item() * 100
 
-print(f"MAE  : {mae:.4f}")
-print(f"RMSE : {rmse:.4f}")
-print(f"MAPE : {mape:.2f}%")
+    metrics_per_target[name] = {"MAE": mae_t, "RMSE": rmse_t, "MAPE": mape_t}
 
+# impresión
+for name, m in metrics_per_target.items():
+    print(f"== {name} ==")
+    print(f"  MAE  : {m['MAE']:.4f}")
+    print(f"  RMSE : {m['RMSE']:.4f}")
+    print(f"  MAPE : {m['MAPE']:.2f}%")
 #Crear visualizaciones:
 
 #serie real vs predicha

@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import time
 import math
+import matplotlib.pyplot as plt
 from app.era5 import getDataERA5,getGeoptencial
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
@@ -128,18 +129,20 @@ def loadData(start,end,lats,lons,max_workers=3):
         #siguiente ventana temporal
         current_start=current_end+timedelta(days=1)
 
-#variables
-#start=datetime(2024,2,29)
-#end=datetime(2024,3,31)
-#lats = np.arange(36, 44.0 + 0.001, 0.25)
-#lons = np.arange(-10, 4.0 + 0.001, 0.25)
-#z_dict = getGeoptencial()
+"""
+#Carga de datos en mongoDB
 
-#código
+start=datetime(2024,2,29)
+end=datetime(2024,3,31)
+lats = np.arange(36, 44.0 + 0.001, 0.25)
+lons = np.arange(-10, 4.0 + 0.001, 0.25)
+z_dict = getGeoptencial()
 
-#saveZDictMongo(z_dict)
-#loadData(start,end,lats,lons)
+código
 
+saveZDictMongo(z_dict)
+loadData(start,end,lats,lons)
+"""
 df=getDataFrame()
 df=addFeatures(df)
 
@@ -165,6 +168,7 @@ checkpoint_callback=trainTFT(training,validation,tft,batch_size,max_epochs)
 best_checkpoint_path=checkpoint_callback.best_model_path
 best_tft=loadBestModel(best_checkpoint_path)
 
+#Calcular métricas de evaluación sobre df_val:
 val_dataloader=validation.to_dataloader(
     train=False,
     batch_size=batch_size,
@@ -174,7 +178,8 @@ val_dataloader=validation.to_dataloader(
 predictions=best_tft.predict(
     val_dataloader,
     return_y=True,
-    trainer_kwargs=dict(acelerator="cpu")
+    return_x=True,
+    trainer_kwargs=dict(accelerator="cpu")
 )
 
 y_pred=predictions.output #tensor de predicciones
@@ -192,3 +197,40 @@ mape=torch.mean(torch.abs((y_true_flat-y_pred_flat)/(y_true_flat+epsilon))).item
 print(f"MAE  : {mae:.4f}")
 print(f"RMSE : {rmse:.4f}")
 print(f"MAPE : {mape:.2f}%")
+
+#Crear visualizaciones:
+
+#serie real vs predicha
+raw_predictions=best_tft.predict(
+    val_dataloader,
+    mode="raw",
+    return_x="True",
+    trainer_kwargs=dict(accelerator="cpu")
+)
+
+for idx in range(3): #tres es un ejemplo
+    fig=best_tft.plot_prediction(
+        raw_predictions.x,
+        raw_predictions.output,
+        idx=idx,
+        add_loss_to_title=True, #añade la loss al titulo, no es obligatorio
+        show_future_observed=True
+    )
+    fig.show()
+
+#distribución de errores
+errors = (y_true_flat - y_pred_flat).detach().cpu().numpy()
+
+plt.hist(errors, bins=50)
+plt.xlabel("Error (y_true - y_pred)")
+plt.ylabel("Frecuencia")
+plt.title("Distribución de errores en validación")
+plt.tight_layout()
+plt.show()
+
+#evolución del error con el tiempo
+pred_vs_actual=best_tft.calculate_prediction_actual_by_variable(
+    predictions.x,
+    predictions.output
+)
+best_tft.plot_prediction_actual_by_variable(pred_vs_actual)

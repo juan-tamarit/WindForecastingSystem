@@ -11,6 +11,7 @@ from app.aemet import getDataAemet
 from datetime import datetime, timedelta
 from app.DBmanager import loadIntoDB,getDataFrame,saveZDictMongo
 from app.DFmanager import addFeatures,splitDataFrame
+from app.metricas import evaluateTarget,plotErrorHistogram,plotPredictions
 from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT,loadBestModel
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pytorch_forecasting import TimeSeriesDataSet
@@ -163,23 +164,8 @@ print(df[["wind_speed", "wind_dir_sin", "wind_dir_cos"]].describe())
 
 train_fact=0.8
 df_train,df_val=splitDataFrame(df,train_fact)
-# solo para la prueba------------------------------------------------------------------
-# orden + índice limpio
-df_train = df_train.sort_values(["location_id", "time_idx"]).reset_index(drop=True)
-df_val   = df_val.sort_values(["location_id", "time_idx"]).reset_index(drop=True)
-
-# usamos un subconjunto pequeño de entrenamiento
-df_train_small = df_train.head(5000).reset_index(drop=True)
-
-# nos quedamos SOLO con los mismos location_id en validación
-train_locations = df_train_small["location_id"].unique()
-df_val_filtered = df_val[df_val["location_id"].isin(train_locations)].reset_index(drop=True)
-
-# subconjunto pequeño de validación
-df_val_small = df_val_filtered.head(2000).reset_index(drop=True)
-#---------------------------------------------------------------------------------------
-training=buildTFTDataSet(df_train_small,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
-validation=buildValidation(training,df_val_small)
+training=buildTFTDataSet(df_train,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
+validation=buildValidation(training,df_val)
 tft=buildTFTModel(training)
 warnings.filterwarnings("ignore",message="X does not have valid feature names, but StandardScaler was fitted with feature names") #el asunto de los warnings
 checkpoint_callback=trainTFT(training,validation,tft,batch_size,max_epochs)
@@ -187,70 +173,17 @@ best_checkpoint_path=checkpoint_callback.best_model_path
 best_tft=loadBestModel(best_checkpoint_path)
 
 #Calcular métricas de evaluación sobre df_val:
-val_dataloader=validation.to_dataloader(
-    train=False,
-    batch_size=batch_size,
-    num_workers=0
-)
-
-predictions=best_tft.predict(
-    val_dataloader,
-    return_y=True,
-    return_x=True,
-    mode="raw",
-    trainer_kwargs=dict(accelerator="cpu")
-)
-
-y_pred_list = predictions.output["prediction"]   # o predictions.output.prediction
-y_true_list = predictions.y
-x_raw=predictions.x
-
-metrics_per_target = {}
-
 for i, name in enumerate(targets):
-    y_pred_t = y_pred_list[i].float().reshape(-1)
-    y_true_tensor = y_true_list[i][0]           # nos quedamos con el tensor
-    y_true_t = y_true_tensor.float().reshape(-1)
-
-    mae_t = torch.mean(torch.abs(y_true_t - y_pred_t)).item()
-    rmse_t = math.sqrt(torch.mean((y_true_t - y_pred_t) ** 2).item())
-    epsilon = 1e-6
-    mape_t = torch.mean(torch.abs((y_true_t - y_pred_t) /(y_true_t + epsilon))).item() * 100
-
-    metrics_per_target[name] = {"MAE": mae_t, "RMSE": rmse_t, "MAPE": mape_t}
-
-# impresión
-for name, m in metrics_per_target.items():
+    metrics = evaluateTarget(best_tft, validation, target_idx=i, batch_size=batch_size)
     print(f"== {name} ==")
-    print(f"  MAE  : {m['MAE']:.4f}")
-    print(f"  RMSE : {m['RMSE']:.4f}")
-    print(f"  MAPE : {m['MAPE']:.2f}%")
+    print(f"  MAE  : {metrics['MAE']:.4f}")
+    print(f"  RMSE : {metrics['RMSE']:.4f}")
+    print(f"  MAPE : {metrics['MAPE']:.2f}%")
 #Crear visualizaciones:
 
-#serie real vs predicha
-for idx in range(3): #tres es un ejemplo
-    fig=best_tft.plot_prediction(
-        x_raw,
-        y_pred,
-        idx=idx,
-        add_loss_to_title=True, #añade la loss al titulo, no es obligatorio
-        show_future_observed=True
-    )
-    fig.show()
+plotPredictions(best_tft, validation, batch_size, 3)
 
-#distribución de errores
-errors = (y_true_flat - y_pred_flat).detach().cpu().numpy()
-
-plt.hist(errors, bins=50)
-plt.xlabel("Error (y_true - y_pred)")
-plt.ylabel("Frecuencia")
-plt.title("Distribución de errores en validación")
-plt.tight_layout()
-plt.show()
-
-#evolución del error con el tiempo
-pred_vs_actual=best_tft.calculate_prediction_actual_by_variable(
-    predictions.x,
-    predictions.output
-)
-best_tft.plot_prediction_actual_by_variable(pred_vs_actual)
+# Histogramas de error por target
+for i, name in enumerate(targets):
+    print(f"Mostrando histograma de errores para {name}")
+    plotErrorHistogram(best_tft, validation, batch_size, i)

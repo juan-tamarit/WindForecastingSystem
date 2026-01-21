@@ -9,8 +9,8 @@ from sklearn.exceptions import DataConversionWarning #el asunto de los warnings
 from app.era5 import getDataERA5,getGeoptencial
 from app.aemet import getDataAemet
 from datetime import datetime, timedelta
-from app.DBmanager import loadIntoDB,getDataFrame,saveZDictMongo
-from app.DFmanager import addFeatures,splitDataFrame
+from app.DBmanager import loadIntoDB,saveZDictMongo
+from app.DFmanager import addFeatures,splitDataFrame,getDataFrame
 from app.metricas import evaluateTarget,plotErrorHistogram,plotPredictions
 from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT,loadBestModel
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -157,7 +157,7 @@ def main():
     time_varying_unknown_reals = ["wind_speed", "wind_dir_sin", "wind_dir_cos","u10","v10","u100","v100","t2m","d2m","skt","sp","msl","tp","ssrd","strd"]
     max_encoder_length=24 #para probar
     max_prediction_length=1 #para probar
-    batch_size=128#para probar
+    batch_size=128 #para probar
     max_epochs=1#para probar
 
     print(df.columns)

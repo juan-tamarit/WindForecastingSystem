@@ -1,7 +1,6 @@
 from pymongo import MongoClient
 from config import mdb
 from datetime import datetime
-import pandas as pd
 
 client=MongoClient(mdb["uri"])
 db=client[mdb["db_name"]]
@@ -114,38 +113,3 @@ def loadZDictMongo():
         z_dict[(lat, lon)] = float(doc["z"])
     return z_dict
 
-# -----------------------------------------------------------------------------
-# Construcción del DataFrame de trabajo a partir de MongoDB (ERA5)
-#
-# Objetivo:
-# - Extraer los documentos ERA5 de collection_era y convertirlos en un
-#   DataFrame ordenado temporalmente, listo para usar en el pipeline
-#   de modelado de series de tiempo. [web:109][web:112]
-#
-# Flujo:
-# 1. Recuperar todos los documentos de collection_era como lista de dicts
-# 2. Crear un DataFrame pandas a partir de esa lista
-# 3. Eliminar columnas que no se necesitan para el modelo:
-#      - "_id": identificador interno de MongoDB
-#      - "time": campo redundante si ya se usa "valid_time" como timestamp
-# 4. Convertir "valid_time" a tipo datetime para que pandas lo trate como
-#    índice temporal válido en ordenaciones y resampling
-# 5. Ordenar el DataFrame por "valid_time" y resetear el índice
-#
-# Resultado:
-# - DataFrame con:
-#     · Columnas físicas (u10, v10, u100, v100, msl, sp, t2m, d2m, ssrd, tp, z, etc.)
-#     · Columna temporal "valid_time" en datetime
-#     · Filas ordenadas cronológicamente
-# -----------------------------------------------------------------------------
-
-def getDataFrame():
-    data=list(collection_era.find({}))
-    df=pd.DataFrame(data)
-    #eliminar variables que no necesitamos
-    df=df.drop(columns=["_id"])
-    #aseguramos el formato del timestamp
-    df["valid_time"]=pd.to_datetime(df["valid_time"])
-    #ordenamos el dataframe
-    df=df.sort_values(by="valid_time").reset_index(drop=True)
-    return df

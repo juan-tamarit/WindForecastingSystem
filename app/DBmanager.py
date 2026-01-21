@@ -4,9 +4,7 @@ from datetime import datetime
 
 client=MongoClient(mdb["uri"])
 db=client[mdb["db_name"]]
-coleccion=db[mdb["collection_name"]]
 collection_aemet=db[mdb["collection_aemet"]]
-collection_era=db[mdb["collection_era"]]
 collection_z=db[mdb["collection_z"]]
 
 # -----------------------------------------------------------------------------

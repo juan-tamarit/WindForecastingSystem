@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from DBmanager import collection_era
+from src.db.DBmanager import collection_era
 
 # -----------------------------------------------------------------------------
 # Construcción del DataFrame de trabajo a partir de MongoDB (ERA5)

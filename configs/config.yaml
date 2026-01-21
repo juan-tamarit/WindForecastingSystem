@@ -1,0 +1,18 @@
+data:
+  start: "2024-02-29"
+  end: "2024-03-31"
+  grid:
+    lats:
+      start: 36.0
+      stop: 44.0
+      step: 0.25
+    lons:
+      start: -10.0
+      stop: 4.0
+      step: 0.25
+model:
+  max_encoder_length: 24
+  max_prediction_length: 1
+  batch_size: 128
+  max_epochs: 50
+  targets: ["wind_speed", "wind_dir_sin", "wind_dir_cos"]

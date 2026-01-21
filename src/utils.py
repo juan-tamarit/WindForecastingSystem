@@ -1,24 +1,9 @@
 #imports
-import torch
-import numpy as np
 import time
-import math
-import matplotlib.pyplot as plt
-import warnings #el asunto de los warnings
-from sklearn.exceptions import DataConversionWarning #el asunto de los warnings
-from app.era5 import getDataERA5,getGeoptencial
-from app.aemet import getDataAemet
-from datetime import datetime, timedelta
-from app.DBmanager import loadIntoDB,saveZDictMongo
-from app.DFmanager import addFeatures,splitDataFrame,getDataFrame
-from app.metricas import evaluateTarget,plotErrorHistogram,plotPredictions
-from app.models.tft_model import buildTFTDataSet, buildValidation,buildTFTModel,trainTFT,loadBestModel
+from src.data.era5 import getDataERA5
+from datetime import timedelta
+from src.db.DBmanager import loadIntoDB
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pytorch_forecasting import TimeSeriesDataSet
-from pytorch_forecasting.metrics import MAE
-
-
-
 #funciones
 
 # -----------------------------------------------------------------------------
@@ -131,66 +116,3 @@ def loadData(start,end,lats,lons,max_workers=3):
                     print ("Error en un punto:",e)
         #siguiente ventana temporal
         current_start=current_end+timedelta(days=1)
-
-
-def main():
-    """
-    #Carga de datos en mongoDB
-
-    start=datetime(2024,2,29)
-    end=datetime(2024,3,31)
-    lats = np.arange(36, 44.0 + 0.001, 0.25)
-    lons = np.arange(-10, 4.0 + 0.001, 0.25)
-    z_dict = getGeoptencial()
-
-    código
-
-    saveZDictMongo(z_dict)
-    loadData(start,end,lats,lons)
-    """
-    df=getDataFrame()
-    df=addFeatures(df)
-
-    targets = ["wind_speed", "wind_dir_sin","wind_dir_cos"]
-    static_reals = ["latitude", "longitude", "elevacion_m"]
-    time_varying_known_reals = ["time_idx"]
-    time_varying_unknown_reals = ["wind_speed", "wind_dir_sin", "wind_dir_cos","u10","v10","u100","v100","t2m","d2m","skt","sp","msl","tp","ssrd","strd"]
-    max_encoder_length=24 #para probar
-    max_prediction_length=1 #para probar
-    batch_size=128 #para probar
-    max_epochs=1#para probar
-
-    print(df.columns)
-    print(df.dtypes[["valid_time", "time_idx", "location_id"]])
-    print(df[["wind_speed", "wind_dir_sin", "wind_dir_cos"]].describe())
-
-    train_fact=0.8
-    df_train,df_val=splitDataFrame(df,train_fact)
-    training=buildTFTDataSet(df_train,targets,static_reals,time_varying_known_reals,time_varying_unknown_reals,max_encoder_length,max_prediction_length)
-    validation=buildValidation(training,df_val)
-    tft=buildTFTModel(training)
-    checkpoint_callback=trainTFT(training,validation,tft,batch_size,max_epochs)
-    best_checkpoint_path=checkpoint_callback.best_model_path
-    best_tft=loadBestModel(best_checkpoint_path)
-
-    #Calcular métricas de evaluación sobre df_val:
-    for i, name in enumerate(targets):
-        metrics = evaluateTarget(best_tft, validation, target_idx=i, batch_size=batch_size)
-        print(f"== {name} ==")
-        print(f"  MAE  : {metrics['MAE']:.4f}")
-        print(f"  RMSE : {metrics['RMSE']:.4f}")
-        print(f"  MAPE : {metrics['MAPE']:.2f}%")
-    #Crear visualizaciones:
-
-    plotPredictions(best_tft, validation, batch_size, 3)
-
-    # Histogramas de error por target
-    for i, name in enumerate(targets):
-        print(f"Mostrando histograma de errores para {name}")
-        plotErrorHistogram(best_tft, validation, batch_size, i)
-
-warnings.filterwarnings("ignore",message="X does not have valid feature names, but StandardScaler was fitted with feature names") #el asunto de los warnings
-if __name__ == "__main__":
-    import multiprocessing as mp
-    mp.freeze_support()  # opcional pero recomendado en Windows
-    main()

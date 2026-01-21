@@ -1,11 +1,11 @@
 from pymongo import MongoClient
-from config import mdb
+from src.config import MDB
 from datetime import datetime
 
-client=MongoClient(mdb["uri"])
-db=client[mdb["db_name"]]
-collection_aemet=db[mdb["collection_aemet"]]
-collection_z=db[mdb["collection_z"]]
+client=MongoClient(MDB["uri"])
+db=client[MDB["db_name"]]
+collection_era=db[MDB["collection_era"]]
+collection_z=db[MDB["collection_z"]]
 
 # -----------------------------------------------------------------------------
 # Carga de datos en MongoDB (ERA5, AEMET u otros)
@@ -34,9 +34,11 @@ def loadIntoDB(data,control):
     try:
         z_dict=loadZDictMongo()
         if control==0:
+            """
             for doc in data:
                 doc['fecha']=datetime.strptime(doc['fecha'],"%Y-%m-%d")
                 collection_aemet.insert_one(doc)
+            """
         elif control==1:
             for doc in data:
                 doc['valid_time']=datetime.strptime(doc['valid_time'],"%Y-%m-%d %H:%M:%S")
@@ -48,8 +50,6 @@ def loadIntoDB(data,control):
                     if z_val is not None:
                         doc['z'] = z_val
                 collection_era.insert_one(doc)
-        else:
-            coleccion.insert_many(data)
     except Exception as e:
         print(f"Error en la carga: {e}")
         raise

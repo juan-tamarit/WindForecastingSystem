@@ -1,0 +1,1 @@
+E:\DatosAEMET\checkpoints\tft-epoch=00-val_loss=0.3101.ckpt

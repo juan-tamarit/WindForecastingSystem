@@ -8,17 +8,17 @@ from src.models.metricas import evaluateTarget, plotPredictions, plotErrorHistog
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names, but StandardScaler was fitted with feature names")
 
-#logging.basicConfig(level=logging.INFO)
-#logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":    
-    #logger.info("Evaluando modelo TFT")
+    logger.info("Evaluando modelo TFT")
     
     # Recupera path del mejor modelo
-    with open("models/best_checkpoint_path.txt", "r") as f:
+    with open("src/models/best_checkpoint_path.txt", "r") as f:
         best_checkpoint_path = f.read().strip()
     best_tft = loadBestModel(best_checkpoint_path)
-    #logger.info(f"Modelo cargado desde: {best_checkpoint_path}")
+    logger.info(f"Modelo cargado desde: {best_checkpoint_path}")
     
     # Regenera datos y datasets
     df = getDataFrame()
@@ -63,4 +63,4 @@ if __name__ == "__main__":
         print(f"Mostrando histograma de errores para {name}")
         plotErrorHistogram(best_tft, validation, batch_size, i)
     
-    #logger.info("Evaluación completada.")
+    logger.info("Evaluación completada.")

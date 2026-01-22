@@ -45,8 +45,8 @@ if __name__ == "__main__":
     batch_size = cfg["batch_size"]
     max_epochs = cfg["max_epochs"]
     checkpoint_callback = trainTFT(training, validation, tft, batch_size, max_epochs)
-    logger.info(f"Mejor modelo cargado desde: {checkpoint_callback.best_checkpoint_path}")
-    with open("models/best_checkpoint_path.txt", "w") as f:
+    logger.info(f"Mejor modelo cargado desde: {checkpoint_callback.best_model_path}")
+    with open("src/models/best_checkpoint_path.txt", "w") as f:
         f.write(checkpoint_callback.best_model_path)
     logger.info(f"Mejor checkpoint guardado: {checkpoint_callback.best_model_path}")
     print("Entrenamiento completado.")

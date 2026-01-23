@@ -130,6 +130,7 @@ def buildTFTModel(training):
     log_val_interval=-1,    # no log de interpretación en val
     reduce_on_plateau_patience=4,
     )
+    tft.save_hyperparameters(ignore=['logging_metrics'])
     return tft
 
 # ---------------------------------------------

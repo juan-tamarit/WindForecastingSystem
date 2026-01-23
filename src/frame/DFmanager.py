@@ -39,7 +39,6 @@ def getDataFrame(after_date=None):
         return pd.DataFrame()
     
     df = pd.DataFrame(data)
-    df=df.drop(columns=["_id"])
     df["valid_time"] = pd.to_datetime(df["valid_time"])
     return df.sort_values(by="valid_time").reset_index(drop=True)
 

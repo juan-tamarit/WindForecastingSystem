@@ -39,6 +39,7 @@ def getDataFrame(after_date=None):
         return pd.DataFrame()
     
     df = pd.DataFrame(data)
+    df=df.drop(columns=["_id"])
     df["valid_time"] = pd.to_datetime(df["valid_time"])
     return df.sort_values(by="valid_time").reset_index(drop=True)
 
@@ -127,5 +128,5 @@ def splitDataFrame(df,train_fact):
 def getProcessedDataFrame():
     data=list(collection_pro.find({}))
     df=pd.DataFrame(data)
-    df.sort_values(["location_id","time_idx"])
+    df.sort_values(["location_id","time_idx"]).reset_index(drop=True)
     return df

@@ -5,6 +5,10 @@ from src.config import PARAMS
 from src.frame.DFmanager import getDataFrame, addFeatures, splitDataFrame
 from src.models.tft_model import buildTFTDataSet, buildValidation, loadBestModel
 from src.models.metricas import evaluateTarget, plotPredictions, plotErrorHistogram
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+BEST_CKPT_PATH_FILE = PROJECT_ROOT / "src" / "models" / "best_checkpoint_path.txt"
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names, but StandardScaler was fitted with feature names")
 
@@ -15,8 +19,7 @@ if __name__ == "__main__":
     logger.info("Evaluando modelo TFT")
     
     # Recupera path del mejor modelo
-    with open("src/models/best_checkpoint_path.txt", "r") as f:
-        best_checkpoint_path = f.read().strip()
+    best_checkpoint_path = BEST_CKPT_PATH_FILE.read_text().strip()
     best_tft = loadBestModel(best_checkpoint_path)
     logger.info(f"Modelo cargado desde: {best_checkpoint_path}")
     

@@ -6,6 +6,10 @@ from src.frame.DFmanager import getDataFrame, addFeatures, splitDataFrame
 from src.models.tft_model import (
     buildTFTDataSet, buildValidation, buildTFTModel, trainTFT, loadBestModel
 )
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # sube de scripts/ a raíz
+BEST_CKPT_PATH_FILE = PROJECT_ROOT / "src" / "models" / "best_checkpoint_path.txt"
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names, but StandardScaler was fitted with feature names")
 
@@ -45,8 +49,7 @@ if __name__ == "__main__":
     batch_size = cfg["batch_size"]
     max_epochs = cfg["max_epochs"]
     checkpoint_callback = trainTFT(training, validation, tft, batch_size, max_epochs)
-    logger.info(f"Mejor modelo cargado desde: {checkpoint_callback.best_model_path}")
-    with open("src/models/best_checkpoint_path.txt", "w") as f:
-        f.write(checkpoint_callback.best_model_path)
-    logger.info(f"Mejor checkpoint guardado: {checkpoint_callback.best_model_path}")
+    BEST_CKPT_PATH_FILE.parent.mkdir(parents=True, exist_ok=True)  # por si acaso
+    BEST_CKPT_PATH_FILE.write_text(checkpoint_callback.best_model_path)
+    logger.info(f"Mejor checkpoint guardado en: {BEST_CKPT_PATH_FILE}")
     print("Entrenamiento completado.")

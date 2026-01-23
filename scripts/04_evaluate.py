@@ -1,6 +1,7 @@
 """04_evaluate.py - Evalúa modelo TFT con métricas y plots."""
 import logging
 import warnings
+import numpy as np
 from src.config import PARAMS
 from src.frame.DFmanager import getProcessedDataFrame, splitDataFrame
 from src.models.tft_model import buildTFTDataSet, buildValidation, loadBestModel
@@ -9,6 +10,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BEST_CKPT_PATH_FILE = PROJECT_ROOT / "src" / "models" / "best_checkpoint_path.txt"
+N_SAMPLES = 20
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names, but StandardScaler was fitted with feature names")
 
@@ -41,12 +43,19 @@ if __name__ == "__main__":
     
     train_fact = 0.8
     df_train, df_val = splitDataFrame(df, train_fact)
-    
+
+    np.random.seed(42)  # Reproducible
+    unique_locs = df_val["location_id"].unique()
+    sample_locs = np.random.choice(unique_locs, size=min(N_SAMPLES, len(unique_locs)), replace=False)
+
+    df_val_sample = df_val[df_val["location_id"].isin(sample_locs)].copy()
+    logger.info(f"Muestra eval: {df_val_sample.shape[0]} rows, {len(sample_locs)} locations")
+
     training = buildTFTDataSet(
         df_train, targets, static_reals, time_varying_known_reals,
         time_varying_unknown_reals, cfg["max_encoder_length"], cfg["max_prediction_length"]
     )
-    validation = buildValidation(training, df_val)
+    validation = buildValidation(training, df_val_sample)
     
     batch_size = cfg["batch_size"]
     

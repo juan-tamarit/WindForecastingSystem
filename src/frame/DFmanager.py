@@ -27,16 +27,20 @@ from src.db.DBmanager import collection_era,collection_pro
 #     · Filas ordenadas cronológicamente
 # -----------------------------------------------------------------------------
 
-def getDataFrame():
-    data=list(collection_era.find({}))
-    df=pd.DataFrame(data)
-    #eliminar variables que no necesitamos
-    df=df.drop(columns=["_id"])
-    #aseguramos el formato del timestamp
-    df["valid_time"]=pd.to_datetime(df["valid_time"])
-    #ordenamos el dataframe
-    df=df.sort_values(by="valid_time").reset_index(drop=True)
-    return df
+def getDataFrame(after_date=None):
+    if after_date:
+        query = {"valid_time": {"$gt": after_date}}
+    else:
+        query = {}
+
+    data = list(collection_era.find(query, {"_id": 0}))
+    
+    if not data:
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(data)
+    df["valid_time"] = pd.to_datetime(df["valid_time"])
+    return df.sort_values(by="valid_time").reset_index(drop=True)
 
 # -----------------------------------------------------------------------------
 # Enriquecimiento del DataFrame con variables derivadas para el modelo

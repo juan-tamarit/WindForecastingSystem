@@ -6,25 +6,24 @@ import logging
 if __name__ == "__main__":
     logging.info("Construyendo datosProcesados...")
     
-    # 1. Datos raw existentes
-    df_raw = getDataFrame()
-    
-    # 2. Procesar
-    df_proc = addFeatures(df_raw)
-    
-    # 3. Incremental: solo nuevos datos
+    # 1. Fecha última procesada
     if collection_pro.count_documents({}) > 0:
-        last_time_proc = list(collection_pro.find().sort("valid_time", -1).limit(1))[0]["valid_time"]
-        df_new = df_proc[df_proc["valid_time"] > last_time_proc]
-        logging.info(f"Nuevos datos: {len(df_new)}")
+        pipeline = [{"$sort": {"valid_time": -1}}, {"$limit": 1}]
+        last_doc = list(collection_pro.aggregate(pipeline))[0]
+        after_date = last_doc["valid_time"]
     else:
-        df_new = df_proc
-        logging.info(f"Primera carga: {len(df_new)}")
+        after_date = None
+        logging.info("Primera carga")
     
-    # 4. Insertar solo nuevos
-    if len(df_new) > 0:
-        docs = df_new.to_dict(orient="records")
-        collection_pro.insert_many(docs)
-        print(f"Insertados {len(docs)} nuevos documentos")
-    else:
+    # 2. Solo datos nuevos desde Mongo (filtro eficiente)
+    df_raw_new = getDataFrame(after_date)
+    logging.info(f"Datos raw nuevos: {df_raw_new.shape}")
+    
+    if len(df_raw_new) == 0:
         print("No hay datos nuevos")
+    else:
+        # 3. Procesar solo nuevos
+        df_proc_new = addFeatures(df_raw_new)
+        docs = df_proc_new.to_dict(orient="records")
+        collection_pro.insert_many(docs)
+        print(f"Insertados {len(docs)} documentos nuevos")

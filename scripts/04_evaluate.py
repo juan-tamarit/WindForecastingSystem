@@ -2,7 +2,7 @@
 import logging
 import warnings
 from src.config import PARAMS
-from src.frame.DFmanager import getDataFrame, addFeatures, splitDataFrame
+from src.frame.DFmanager import getProcessedDataFrame, splitDataFrame
 from src.models.tft_model import buildTFTDataSet, buildValidation, loadBestModel
 from src.models.metricas import evaluateTarget, plotPredictions, plotErrorHistogram
 from pathlib import Path
@@ -24,8 +24,7 @@ if __name__ == "__main__":
     logger.info(f"Modelo cargado desde: {best_checkpoint_path}")
     
     # Regenera datos y datasets
-    df = getDataFrame()
-    df = addFeatures(df)
+    df = getProcessedDataFrame()
     
     print("Columns:", df.columns.tolist())
     print("Dtypes:", df.dtypes[["valid_time", "time_idx", "location_id"]])

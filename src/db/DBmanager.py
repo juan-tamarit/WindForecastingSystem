@@ -6,6 +6,7 @@ client=MongoClient(MDB["uri"])
 db=client[MDB["db_name"]]
 collection_era=db[MDB["collection_era"]]
 collection_z=db[MDB["collection_z"]]
+collection_pro=db[MDB["collection_pro"]]
 
 # -----------------------------------------------------------------------------
 # Carga de datos en MongoDB (ERA5, AEMET u otros)

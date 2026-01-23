@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from src.db.DBmanager import collection_era
+from src.db.DBmanager import collection_era,collection_pro
 
 # -----------------------------------------------------------------------------
 # Construcción del DataFrame de trabajo a partir de MongoDB (ERA5)
@@ -119,3 +119,9 @@ def splitDataFrame(df,train_fact):
     df_train = df[df["time_idx"] <= training_cutoff]
     df_val = df[df["time_idx"] > training_cutoff]
     return df_train,df_val
+
+def getProcessedDataFrame():
+    data=list(collection_pro.find({}))
+    df=pd.DataFrame(data)
+    df.sort_values(["location_id","time_idx"])
+    return df

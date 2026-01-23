@@ -19,7 +19,8 @@ MDB = {
     "uri": "mongodb://localhost:27017/",
     "db_name": "TFG",
     "collection_era": "datosERA5",
-    "collection_z": "orografia"
+    "collection_z": "orografia",
+    "collection_pro": "datosProcesados"
 }
 
 # Carga parámetros de YAML

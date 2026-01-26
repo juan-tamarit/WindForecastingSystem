@@ -34,12 +34,10 @@ if __name__ == "__main__":
     
     cfg = PARAMS["model"]
     targets = cfg["targets"]
-    static_reals = ["latitude", "longitude", "elevacion_m"]
-    time_varying_known_reals = ["time_idx"]
-    time_varying_unknown_reals = [
-        "wind_speed", "wind_dir_sin", "wind_dir_cos", "u10", "v10", "u100", "v100",
-        "t2m", "d2m", "skt", "sp", "msl", "tp", "ssrd", "strd"
-    ]
+    static_reals = cfg["static_reals"]
+    time_varying_known_reals = cfg["time_varying_known_reals"]
+    time_varying_unknown_reals = cfg["time_varying_unknown_reals"]
+    
     
     train_fact = 0.8
     df_train, df_val = splitDataFrame(df, train_fact)

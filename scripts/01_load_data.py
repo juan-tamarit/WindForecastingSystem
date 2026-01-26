@@ -1,7 +1,7 @@
 """Carga datos ERA5 y orografía."""
 import logging
 from src.config import PARAMS
-from src.data.era5 import getGeoptencial  
+from src.data_loading.era5 import getGeoptencial  
 from src.db.DBmanager import saveZDictMongo,loadZDictMongo
 from src.utils import loadData # Directo, sin cambios
 

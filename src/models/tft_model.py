@@ -120,17 +120,16 @@ def buildValidation(training,df_val):
 def buildTFTModel(training):
     tft= TemporalFusionTransformer.from_dataset(
     training,
-    learning_rate=1e-3,
-    hidden_size=32,
+    hidden_size=48,
     attention_head_size=4,
-    dropout=0.1,
-    hidden_continuous_size=16,
+    hidden_continuous_size=24,
+    dropout=0.15,
+    learning_rate=1e-3,
     loss=QuantileLoss(),
     log_interval=-1,        # no log de interpretación en train
     log_val_interval=-1,    # no log de interpretación en val
     reduce_on_plateau_patience=4,
     )
-    tft.save_hyperparameters(ignore=['logging_metrics'])
     return tft
 
 # ---------------------------------------------
@@ -181,14 +180,14 @@ def trainTFT(training,validation,tft,batch_size,max_epochs):
     train_dataloader=training.to_dataloader(
     train=True,
     batch_size=batch_size,
-    num_workers=4,
+    num_workers=10,
     persistent_workers=True
     )
 
     val_dataloader = validation.to_dataloader(
         train=False,
         batch_size=batch_size,
-        num_workers=4,
+        num_workers=10,
         persistent_workers=True
     )
 

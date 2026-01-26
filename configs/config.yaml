@@ -11,10 +11,10 @@ data:
       stop: 4.0
       step: 0.25
 model:
-  max_encoder_length: 24
-  max_prediction_length: 1
+  max_encoder_length: 72
+  max_prediction_length: 6
   batch_size: 128
-  max_epochs: 1
+  max_epochs: 20
   targets: ["wind_speed", "wind_dir_sin", "wind_dir_cos"]
   static_reals: ["latitude", "longitude", "elevacion_m"]
   time_varying_known_reals : ["time_idx"]

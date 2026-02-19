@@ -47,8 +47,15 @@ class AuroraMongoDataset(Dataset):
         return {"elevation": elev, "lsm": lsm}
 
     def __len__(self):
-        # Margen: historia (ej. 72h) + 2 pasos de predicción (ej. 6h + 6h)
-        margin = self.cfg_aurora["input_hours"] + (self.cfg_aurora["target_hours"] * 2)
+        h_hist = self.cfg_aurora["input_hours"]
+        h_step = self.cfg_aurora["target_hours"]
+        h_total = self.cfg_aurora["forecast_hours"]
+        
+        # Calculamos número de pasos (mínimo 1)
+        n_steps = max(1, h_total // h_step)
+        
+        # El margen real es el historial + todos los pasos que vamos a predecir
+        margin = h_hist + (h_step * n_steps)
         return len(self.times) - margin
 
     def _get_grid(self, time):
@@ -67,29 +74,32 @@ class AuroraMongoDataset(Dataset):
         return grids
 
     def __getitem__(self, idx):
-        # INICIALIZACIÓN PEREZOSA: Se ejecuta una vez por cada worker
         if self.client is None:
             self.client = MongoClient(self.cfg_mdb["uri"])
             self.col = self.client[self.cfg_mdb["db_name"]][self.cfg_mdb["collection_pro"]]
         
         h_hist = self.cfg_aurora["input_hours"]
         h_step = self.cfg_aurora["target_hours"]
+        h_total = self.cfg_aurora["forecast_hours"]
         
-        t_past    = self.times[idx]
-        t_now     = self.times[idx + h_hist]
-        t_target1 = self.times[idx + h_hist + h_step]
-        t_target2 = self.times[idx + h_hist + (h_step * 2)]
+        # Calculamos número de pasos (mínimo 1)
+        n_steps = max(1, h_total // h_step)
+        
+        # Inputs (t_past y t_now)
+        t_past = self.times[idx]
+        t_now  = self.times[idx + h_hist]
         
         grid_past = self._get_grid(t_past)
         grid_now  = self._get_grid(t_now)
-        grid_tgt1 = self._get_grid(t_target1)
-        grid_tgt2 = self._get_grid(t_target2)
         
         inputs = {k: torch.stack([grid_past[k], grid_now[k]], dim=0) for k in grid_past.keys()}
-        targets = {
-            "step_1": {k: grid_tgt1[k].unsqueeze(0) for k in grid_tgt1.keys()},
-            "step_2": {k: grid_tgt2[k].unsqueeze(0) for k in grid_tgt2.keys()}
-        }
+        
+        # Targets dinámicos
+        targets = {}
+        for s in range(1, n_steps + 1):
+            t_target = self.times[idx + h_hist + (h_step * s)]
+            grid_tgt = self._get_grid(t_target)
+            targets[f"step_{s}"] = {k: grid_tgt[k].unsqueeze(0) for k in grid_tgt.keys()}
         
         return {"inputs": inputs, "targets": targets, "statics": self.static_grid}
 
@@ -222,51 +232,42 @@ class AuroraFinetuner(pl.LightningModule):
         return self.model(batch)
 
     def shared_step(self, mongo_batch, stage):
-        # --- PASO 1: Predicción a +6h ---
-        aurora_batch_1 = self.prepare_aurora_batch(mongo_batch)
-        pred_1 = self(aurora_batch_1)
+        # 1. Preparar primer batch y predecir
+        aurora_batch = self.prepare_aurora_batch(mongo_batch)
         
-        t1_u = mongo_batch["targets"]["step_1"]["10u"][..., self.lon_indices]
-        t1_v = mongo_batch["targets"]["step_1"]["10v"][..., self.lon_indices]
+        total_loss = 0
+        n_steps = len(mongo_batch["targets"])
         
-        # Métricas Paso 1
-        mse_1 = F.mse_loss(pred_1.surf_vars["10u"], t1_u) + F.mse_loss(pred_1.surf_vars["10v"], t1_v)
-        mae_1 = F.l1_loss(pred_1.surf_vars["10u"], t1_u) + F.l1_loss(pred_1.surf_vars["10v"], t1_v)
-        rmse_1 = torch.sqrt(mse_1)
+        for s in range(1, n_steps + 1):
+            # Predicción del paso actual
+            prediction = self(aurora_batch)
+            
+            # Ground Truth del paso actual
+            target_key = f"step_{s}"
+            t_u = mongo_batch["targets"][target_key]["10u"][..., self.lon_indices]
+            t_v = mongo_batch["targets"][target_key]["10v"][..., self.lon_indices]
+            
+            # Cálculo de pérdida (acumulada)
+            step_loss = F.mse_loss(prediction.surf_vars["10u"], t_u) + \
+                        F.mse_loss(prediction.surf_vars["10v"], t_v)
+            total_loss += step_loss
+            
+            # Log individual por paso
+            self.log(f"{stage}/rmse_step_{s}", torch.sqrt(step_loss), prog_bar=(s==1))
 
-        # --- PASO 2: Autorregresión (+12h) ---
-        new_surf_vars = {
-            k: torch.stack([
-                aurora_batch_1.surf_vars[k][:, 1], 
-                pred_1.surf_vars[k].squeeze(1)
-            ], dim=1)
-            for k in ("2t", "10u", "10v", "msl")
-        }
+            # Preparar siguiente paso autoregresivo (si no es el último)
+            if s < n_steps:
+                new_surf_vars = {
+                    k: torch.stack([
+                        aurora_batch.surf_vars[k][:, 1], # El 'now' anterior pasa a ser 'past'
+                        prediction.surf_vars[k].squeeze(1) # La predicción actual pasa a ser 'now'
+                    ], dim=1)
+                    for k in ("2t", "10u", "10v", "msl")
+                }
+                aurora_batch.surf_vars = new_surf_vars
         
-        aurora_batch_2 = aurora_batch_1 
-        aurora_batch_2.surf_vars = new_surf_vars
-        pred_2 = self(aurora_batch_2)
-        
-        t2_u = mongo_batch["targets"]["step_2"]["10u"][..., self.lon_indices]
-        t2_v = mongo_batch["targets"]["step_2"]["10v"][..., self.lon_indices]
-        
-        # Métricas Paso 2
-        mse_2 = F.mse_loss(pred_2.surf_vars["10u"], t2_u) + F.mse_loss(pred_2.surf_vars["10v"], t2_v)
-        mae_2 = F.l1_loss(pred_2.surf_vars["10u"], t2_u) + F.l1_loss(pred_2.surf_vars["10v"], t2_v)
-        rmse_2 = torch.sqrt(mse_2)
-
-        # Pérdida total para el optimizador
-        total_loss = mse_1 + mse_2
-        
-        # --- LOGGING ---
-        # Registramos todo para TensorBoard
-        # Usamos '/' para organizar carpetas en la interfaz (ej: val/rmse)
+        # Log de pérdida total
         self.log(f"{stage}/loss", total_loss, prog_bar=True, sync_dist=True)
-        self.log(f"{stage}/rmse_step1", rmse_1, prog_bar=True)
-        self.log(f"{stage}/rmse_step2", rmse_2, prog_bar=True)
-        self.log(f"{stage}/mae_step1", mae_1)
-        self.log(f"{stage}/mae_step2", mae_2)
-        
         return total_loss
 
     def training_step(self, batch, batch_idx):

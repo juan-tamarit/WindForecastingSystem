@@ -11,14 +11,12 @@ if __name__ == "__main__":
     
     db_manager = DBmanager()
     
-    # Static fields
     static_dict = db_manager.loadStaticDictMongo()
     if not static_dict:
         logger.info("Calculando campos estáticos...")
         static_dict = getStaticFields()
         db_manager.saveStaticDictMongo(static_dict)
     
-    # Load ERA5 data
     logger.info("Cargando datos ERA5...")
     loadData(
         db_manager,

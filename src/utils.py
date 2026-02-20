@@ -17,7 +17,6 @@ def setDates(fecha_ini_dt,fecha_fin_dt):
 def processPointPeriod(start_dt, end_dt, lat: float, lon: float, db_manager, cds_semaphore,control):
     lat_r, lon_r = round(lat, 2), round(lon, 2)
     
-    # Check last date to avoid reprocessing
     last_date = db_manager.get_last_date_for_point(lat, lon)
     if last_date and last_date >= start_dt:
         print(f"Punto {lat_r}, {lon_r} ya procesado hasta {last_date}")
@@ -36,10 +35,10 @@ def loadData(db_manager,start,end,lats,lons,max_workers=3):
     current_start=start
     control=1
     while current_start<=end:
-        #gestión del bucle
+        
         current_end= min(current_start + timedelta(days=31),end)
         print(f"Procesando bloque {current_start}–{current_end}")
-        #hilos
+        
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
                 executor.submit(
@@ -60,5 +59,5 @@ def loadData(db_manager,start,end,lats,lons,max_workers=3):
                     f.result()
                 except Exception as e:
                     print ("Error en un punto:",e)
-        #siguiente ventana temporal
+        
         current_start=current_end+timedelta(days=1)

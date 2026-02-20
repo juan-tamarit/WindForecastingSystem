@@ -12,22 +12,19 @@ class AuroraVisualizerCallback(Callback):
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def on_validation_epoch_end(self, trainer, pl_module):
-        # 1. Crear carpeta específica para la época
+        
         epoch = trainer.current_epoch
         epoch_dir = self.base_dir / f"epoch_{epoch:02d}"
         epoch_dir.mkdir(parents=True, exist_ok=True)
 
-        # 2. Obtener métricas promedio de la época
-        # Lightning las guarda en trainer.callback_metrics
+        
         metrics = {k: v.item() for k, v in trainer.callback_metrics.items()}
         
-        # 3. Guardar métricas en un CSV
+        
         df = pd.DataFrame([metrics])
         df.to_csv(epoch_dir / "metricas.csv", index=False)
 
-        # 4. Generar y guardar el Mapa PNG
-        # Usamos el primer batch de validación disponible para la foto
-        # (Nota: Esto requiere que guardes una referencia al batch en el módulo o lo pidas aquí)
+        
         self._save_map_image(trainer, pl_module, epoch_dir)
 
     def _save_map_image(self, trainer, pl_module, epoch_dir):
@@ -35,8 +32,7 @@ class AuroraVisualizerCallback(Callback):
         val_loader = trainer.datamodule.val_dataloader()
         batch = next(iter(val_loader)) 
         
-        # ASEGURAR DISPOSITIVO
-        # Mueve todo el diccionario de tensores a la GPU (o donde esté el modelo)
+        
         device = pl_module.device
         batch = {
             "inputs": {k: v.to(device) for k, v in batch["inputs"].items()},

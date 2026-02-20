@@ -12,7 +12,7 @@ data:
       step: 0.25
 aurora: 
   batch_size: 2
-  epochs: 18
+  epochs: 19
   learning_rate: 5.0e-6
   weight_decay: 1e-4  
   num_workers: 4

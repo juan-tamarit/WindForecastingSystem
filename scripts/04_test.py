@@ -7,13 +7,12 @@ from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.config import MDB, PARAMS
 
 def extract_loss(path):
-    """Extrae el valor numérico del loss sin importar el formato del nombre."""
     try:
-        # Quitamos extensión y tomamos la última parte tras el último guion
+        
         name = os.path.basename(path).replace(".ckpt", "")
         last_part = name.split("-")[-1] 
         
-        # Si contiene un '=', nos quedamos con lo de la derecha (ej: val_loss=0.001)
+        
         if "=" in last_part:
             value = last_part.split("=")[-1]
         else:
@@ -24,16 +23,15 @@ def extract_loss(path):
         return float('inf')
 
 def get_best_checkpoint(checkpoint_dir="checkpoints/"):
-    # Buscamos ambos patrones para que no te falle ahora
+    
     ckpts = glob.glob(os.path.join(checkpoint_dir, "aurora-*.ckpt"))
-    # Filtramos para ignorar el 'last.ckpt'
+    
     ckpts = [c for c in ckpts if "last" not in c]
     
     if not ckpts:
         return None
 
-    # Devolvemos el que tenga el loss más bajo (ignorando los 0.0000 si hay mejores)
-    # Si todos son 0.0000, simplemente devolverá el primero que encuentre
+    
     return min(ckpts, key=extract_loss)
 
 def run_test():
@@ -56,64 +54,94 @@ def run_test():
     model.eval().cuda()
 
     results = []
-    print("Iniciando inferencia sobre conjunto de Test...")
+    eps = 1e-5
+    print("Iniciando inferencia autorregresiva (24h) sobre conjunto de Test...")
 
     with torch.no_grad():
         for i, batch in enumerate(test_loader):
-            # Mover batch a GPU recursivamente
             def to_cuda(obj):
                 if isinstance(obj, dict): return {k: to_cuda(v) for k, v in obj.items()}
                 return obj.cuda() if torch.is_tensor(obj) else obj
             
             batch = to_cuda(batch)
 
-            # Predicción Aurora (Paso 1)
-            aurora_batch_1 = model.prepare_aurora_batch(batch)
-            pred_1 = model(aurora_batch_1)
+            aurora_batch = model.prepare_aurora_batch(batch)
             
-            # Ground Truth (Reordenado con lon_indices)
-            t1_u = batch["targets"]["step_1"]["10u"][..., model.lon_indices].squeeze(1)
-            t1_v = batch["targets"]["step_1"]["10v"][..., model.lon_indices].squeeze(1)
             
-            # Persistencia (Valor en 't_now')
             persist_u = batch["inputs"]["10u"][:, 1][..., model.lon_indices]
             persist_v = batch["inputs"]["10v"][:, 1][..., model.lon_indices]
 
-            # RMSE combinado (U + V)
-            rmse_aur = torch.sqrt(F.mse_loss(pred_1.surf_vars["10u"].squeeze(1), t1_u) + 
-                                  F.mse_loss(pred_1.surf_vars["10v"].squeeze(1), t1_v))
             
-            rmse_per = torch.sqrt(F.mse_loss(persist_u, t1_u) + 
-                                  F.mse_loss(persist_v, t1_v))
+            n_steps = len(batch["targets"])
+            for s in range(1, n_steps + 1):
+                
+                prediction = model(aurora_batch)
+                
+                target_key = f"step_{s}"
+                t_u = batch["targets"][target_key]["10u"][..., model.lon_indices].squeeze(1)
+                t_v = batch["targets"][target_key]["10v"][..., model.lon_indices].squeeze(1)
+                
+                pred_u = prediction.surf_vars["10u"].squeeze(1)
+                pred_v = prediction.surf_vars["10v"].squeeze(1)
 
-            results.append({"rmse_aurora": rmse_aur.item(), "rmse_persist": rmse_per.item()})
+                
+                mse_step = F.mse_loss(pred_u, t_u) + F.mse_loss(pred_v, t_v)
+                rmse_aur = torch.sqrt(mse_step)
+                
+                
+                mae_aur = F.l1_loss(pred_u, t_u) + F.l1_loss(pred_v, t_v)
+                
+                
+                mape_u = torch.mean(torch.abs((t_u - pred_u) / (t_u + eps)))
+                mape_v = torch.mean(torch.abs((t_v - pred_v) / (t_v + eps)))
+                mape_aur = (mape_u + mape_v) / 2 * 100
 
-    # Informe de resultados
+                rmse_per = torch.sqrt(F.mse_loss(persist_u, t_u) + F.mse_loss(persist_v, t_v))
+
+                results.append({
+                    "batch_idx": i,
+                    "step": s,
+                    "rmse_aurora": rmse_aur.item(),
+                    "mae_aurora": mae_aur.item(),
+                    "mape_aurora": mape_aur.item(),
+                    "rmse_persist": rmse_per.item()
+                })
+
+                if s < n_steps:
+                    new_surf_vars = {
+                        k: torch.stack([
+                            aurora_batch.surf_vars[k][:, 1],   
+                            prediction.surf_vars[k].squeeze(1) 
+                        ], dim=1)
+                        for k in ("2t", "10u", "10v", "msl")
+                    }
+                    aurora_batch.surf_vars = new_surf_vars
+
     df = pd.DataFrame(results)
-    avg_aur = df['rmse_aurora'].mean()
-    avg_per = df['rmse_persist'].mean()
-    skill = ((avg_per - avg_aur) / avg_per) * 100
+    
+    summary = df.groupby('step').agg({
+        'rmse_aurora': 'mean',
+        'mae_aurora': 'mean',
+        'mape_aurora': 'mean',
+        'rmse_persist': 'mean'
+    })
+    
+    summary['skill_score'] = ((summary['rmse_persist'] - summary['rmse_aurora']) / summary['rmse_persist']) * 100
 
-    # Crear carpeta de resultados si no existe
     output_dir = "docs/resultados"
     os.makedirs(output_dir, exist_ok=True)
-
-    # Nombre de archivo con fecha y nombre del modelo para no sobrescribir
     model_name = os.path.basename(checkpoint_path).replace(".ckpt", "")
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M")
-    csv_path = os.path.join(output_dir, f"test_{model_name}_{timestamp}.csv")
+    csv_path = os.path.join(output_dir, f"test_full_24h_{model_name}_{timestamp}.csv")
 
-    print("\n" + "="*45)
-    print(f"MÉTRICAS DE VALIDACIÓN FINAL (TEST)")
-    print("-" * 45)
-    print(f"Modelo evaluado:    {model_name}")
-    print(f"Distancia RMSE Aur: {avg_aur:.6f}")
-    print(f"Distancia RMSE Per: {avg_per:.6f}")
-    print(f"Skill Score:        {skill:.2f}%")
-    print("="*45)
+    print("\n" + "="*60)
+    print(f"MÉTRICAS FINALES DE TEST (HORIZONTE 24H)")
+    print("-" * 60)
+    print(summary.to_string())
+    print("="*60)
     
     df.to_csv(csv_path, index=False)
-    print(f"Resultados guardados en: {csv_path}")
+    print(f"Dataset completo de test guardado en: {csv_path}")
 
 if __name__ == "__main__":
     run_test()

@@ -16,14 +16,14 @@ class AuroraMongoDataset(Dataset):
         self.lats = lats_torch.tolist()
         self.lons = lons_torch.tolist()
         
-        # IMPORTANTE: No abrimos conexión aquí para evitar errores en el multiprocessing
+        
         self.client = None
         self.col = None
         
         self.lat_map = {round(float(lat), 2): i for i, lat in enumerate(self.lats)}
         self.lon_map = {round(float(lon), 2): j for j, lon in enumerate(self.lons)}
         
-        # Cargamos orografía una sola vez (conexión local efímera)
+        
         self.static_grid = self._load_static_grid()
 
     def _load_static_grid(self):
@@ -35,7 +35,7 @@ class AuroraMongoDataset(Dataset):
         elev = torch.zeros(n_lats, n_lons)
         lsm = torch.zeros(n_lats, n_lons)
         
-        # Usamos el primer registro para extraer la máscara de tierra y elevación
+        
         cursor = col.find({"valid_time": self.times[0]}, {"latitude":1, "longitude":1, "elevacion_m":1, "lsm":1})
         for doc in cursor:
             i, j = self.lat_map.get(doc['latitude']), self.lon_map.get(doc['longitude'])
@@ -51,10 +51,10 @@ class AuroraMongoDataset(Dataset):
         h_step = self.cfg_aurora["target_hours"]
         h_total = self.cfg_aurora["forecast_hours"]
         
-        # Calculamos número de pasos (mínimo 1)
+        
         n_steps = max(1, h_total // h_step)
         
-        # El margen real es el historial + todos los pasos que vamos a predecir
+        
         margin = h_hist + (h_step * n_steps)
         return len(self.times) - margin
 
@@ -82,10 +82,10 @@ class AuroraMongoDataset(Dataset):
         h_step = self.cfg_aurora["target_hours"]
         h_total = self.cfg_aurora["forecast_hours"]
         
-        # Calculamos número de pasos (mínimo 1)
+        
         n_steps = max(1, h_total // h_step)
         
-        # Inputs (t_past y t_now)
+        
         t_past = self.times[idx]
         t_now  = self.times[idx + h_hist]
         
@@ -94,7 +94,7 @@ class AuroraMongoDataset(Dataset):
         
         inputs = {k: torch.stack([grid_past[k], grid_now[k]], dim=0) for k in grid_past.keys()}
         
-        # Targets dinámicos
+        
         targets = {}
         for s in range(1, n_steps + 1):
             t_target = self.times[idx + h_hist + (h_step * s)]
@@ -114,7 +114,7 @@ class AuroraDataModule(pl.LightningDataModule):
         self.lons = None
 
     def setup(self, stage=None):
-        # 1. Conexión temporal para metadatos y cálculo de splits
+        
         client = MongoClient(self.cfg_mdb["uri"])
         col = client[self.cfg_mdb["db_name"]][self.cfg_mdb["collection_pro"]]
     
@@ -122,21 +122,21 @@ class AuroraDataModule(pl.LightningDataModule):
         raw_lats = sorted(col.distinct("latitude"), reverse=True)
         raw_lons = sorted(col.distinct("longitude"))
         
-        # Recorte de seguridad para la arquitectura de Aurora (32x56)
+        
         self.lats = torch.tensor(raw_lats[:32], dtype=torch.float32)
         self.lons = torch.tensor(raw_lons[:56], dtype=torch.float32)
     
-        # 2. CERRAMOS LA CONEXIÓN (El proceso principal no debe mantenerla)
+        
         client.close()
     
-        # 3. SPLIT DINÁMICO (Desde YAML) CON PROTECCIÓN DE TEST
+        
         n_total = len(all_times)
         
-        # Reservamos el 15% final para Test (intocable durante el entrenamiento)
+        
         test_size = int(n_total * 0.15)
         remaining_size = n_total - test_size
         
-        # El resto se divide según el train_split del YAML
+
         split_val = self.cfg_aurora["train_split"]
         train_end = int(remaining_size * split_val)
 
@@ -197,11 +197,10 @@ class AuroraFinetuner(pl.LightningModule):
         current_indices = self.lon_indices.to(device)
 
         surf_vars = {
-            k: mongo_dict["inputs"][k][..., current_indices] # <--- Usamos los índices en el sitio correcto
+            k: mongo_dict["inputs"][k][..., current_indices]
             for k in ("2t", "10u", "10v", "msl")
         }
 
-        # Repetimos lo mismo para las estáticas
         z_reordered = mongo_dict["statics"]["elevation"][..., current_indices]
         lsm_reordered = mongo_dict["statics"]["lsm"][..., current_indices]
 
@@ -232,55 +231,54 @@ class AuroraFinetuner(pl.LightningModule):
         return self.model(batch)
 
     def shared_step(self, mongo_batch, stage):
-        # 1. Preparar primer batch y predecir
+        
         aurora_batch = self.prepare_aurora_batch(mongo_batch)
         
         total_loss = 0
         n_steps = len(mongo_batch["targets"])
         
         for s in range(1, n_steps + 1):
-            # Predicción del paso actual
+            
             prediction = self(aurora_batch)
             
-            # Ground Truth del paso actual
+            
             target_key = f"step_{s}"
             t_u = mongo_batch["targets"][target_key]["10u"][..., self.lon_indices]
             t_v = mongo_batch["targets"][target_key]["10v"][..., self.lon_indices]
             
-            # 1. RMSE (Ya lo tienes, es la raíz del MSE)
+            
             mse_u = F.mse_loss(prediction.surf_vars["10u"], t_u)
             mse_v = F.mse_loss(prediction.surf_vars["10v"], t_v)
             step_loss = mse_u + mse_v
             total_loss += step_loss
             
-            # 2. MAE (Error Medio Absoluto)
+            
             step_mae = F.l1_loss(prediction.surf_vars["10u"], t_u) + \
                        F.l1_loss(prediction.surf_vars["10v"], t_v)
 
-            # 3. MAPE (Error Porcentual - con protección para división por cero)
-            # Usamos un epsilon de 1e-5 para evitar el 'inf' si no hay viento
+            
             eps = 1e-5
             mape_u = torch.mean(torch.abs((t_u - prediction.surf_vars["10u"]) / (t_u + eps)))
             mape_v = torch.mean(torch.abs((t_v - prediction.surf_vars["10v"]) / (t_v + eps)))
             step_mape = (mape_u + mape_v) / 2 * 100 
 
-            # --- LOGS PARA TFG ---
+            
             self.log(f"{stage}/rmse_step_{s}", torch.sqrt(step_loss), prog_bar=(s==1))
             self.log(f"{stage}/mae_step_{s}", step_mae)
             self.log(f"{stage}/mape_step_{s}", step_mape)
 
-            # Preparar siguiente paso autoregresivo (si no es el último)
+            
             if s < n_steps:
                 new_surf_vars = {
                     k: torch.stack([
-                        aurora_batch.surf_vars[k][:, 1], # El 'now' anterior pasa a ser 'past'
-                        prediction.surf_vars[k].squeeze(1) # La predicción actual pasa a ser 'now'
+                        aurora_batch.surf_vars[k][:, 1], 
+                        prediction.surf_vars[k].squeeze(1) 
                     ], dim=1)
                     for k in ("2t", "10u", "10v", "msl")
                 }
                 aurora_batch.surf_vars = new_surf_vars
         
-        # Log de pérdida total
+        
         self.log(f"{stage}/loss", total_loss, prog_bar=True, sync_dist=True)
         return total_loss
 
@@ -297,7 +295,7 @@ class AuroraFinetuner(pl.LightningModule):
             weight_decay=float(self.cfg_aurora["weight_decay"])
         )
     
-        # scheduler_t_max debería ser igual al número de épocas totales
+        
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=self.cfg_aurora.get("epochs", 10), 
@@ -308,6 +306,6 @@ class AuroraFinetuner(pl.LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "interval": "epoch", # Se actualiza cada vez que termina una época
+                "interval": "epoch", 
             },
         }

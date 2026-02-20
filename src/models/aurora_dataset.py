@@ -247,13 +247,27 @@ class AuroraFinetuner(pl.LightningModule):
             t_u = mongo_batch["targets"][target_key]["10u"][..., self.lon_indices]
             t_v = mongo_batch["targets"][target_key]["10v"][..., self.lon_indices]
             
-            # Cálculo de pérdida (acumulada)
-            step_loss = F.mse_loss(prediction.surf_vars["10u"], t_u) + \
-                        F.mse_loss(prediction.surf_vars["10v"], t_v)
+            # 1. RMSE (Ya lo tienes, es la raíz del MSE)
+            mse_u = F.mse_loss(prediction.surf_vars["10u"], t_u)
+            mse_v = F.mse_loss(prediction.surf_vars["10v"], t_v)
+            step_loss = mse_u + mse_v
             total_loss += step_loss
             
-            # Log individual por paso
+            # 2. MAE (Error Medio Absoluto)
+            step_mae = F.l1_loss(prediction.surf_vars["10u"], t_u) + \
+                       F.l1_loss(prediction.surf_vars["10v"], t_v)
+
+            # 3. MAPE (Error Porcentual - con protección para división por cero)
+            # Usamos un epsilon de 1e-5 para evitar el 'inf' si no hay viento
+            eps = 1e-5
+            mape_u = torch.mean(torch.abs((t_u - prediction.surf_vars["10u"]) / (t_u + eps)))
+            mape_v = torch.mean(torch.abs((t_v - prediction.surf_vars["10v"]) / (t_v + eps)))
+            step_mape = (mape_u + mape_v) / 2 * 100 
+
+            # --- LOGS PARA TFG ---
             self.log(f"{stage}/rmse_step_{s}", torch.sqrt(step_loss), prog_bar=(s==1))
+            self.log(f"{stage}/mae_step_{s}", step_mae)
+            self.log(f"{stage}/mape_step_{s}", step_mape)
 
             # Preparar siguiente paso autoregresivo (si no es el último)
             if s < n_steps:

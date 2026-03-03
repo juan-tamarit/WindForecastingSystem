@@ -11,6 +11,7 @@ data:
       stop: 4.0
       step: 0.25
 aurora: 
+  checkpoint: "checkpoints/last.ckpt"
   batch_size: 2
   epochs: 19
   learning_rate: 5.0e-6

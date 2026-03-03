@@ -8,7 +8,7 @@ import os
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    last_ckpt = "checkpoints/last.ckpt"
+    last_ckpt = PARAMS["auora"].get("checkpoint")
     path_to_load = last_ckpt if os.path.exists(last_ckpt) else None
 
     # 1. Configuración del Checkpoint (Ya lo tenías, mantenemos el mejor)

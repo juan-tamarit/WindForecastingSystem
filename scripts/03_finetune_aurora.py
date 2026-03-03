@@ -32,7 +32,7 @@ def run_orchestrator():
     stats = dfm.get_normalization_stats()
     
     # 1. Punto de partida global (definido en config o None para empezar de cero)
-    mejor_checkpoint_global = PARAMS["aurora"].get("checkpoint")
+    mejor_checkpoint_global = PARAMS["aurora_base"].get("checkpoint")
     if mejor_checkpoint_global and not os.path.exists(mejor_checkpoint_global):
         mejor_checkpoint_global = None
 

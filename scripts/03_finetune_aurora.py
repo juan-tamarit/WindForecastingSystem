@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from src.config import MDB, PARAMS
+from src.frame import DFmanager
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping # Importamos EarlyStopping
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.models.visualizer import AuroraVisualizerCallback
@@ -8,8 +9,10 @@ import os
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    last_ckpt = PARAMS["auora"].get("checkpoint")
+    last_ckpt = PARAMS["aurora"].get("checkpoint")
     path_to_load = last_ckpt if os.path.exists(last_ckpt) else None
+    dfm = DFmanager()
+    stats = dfm.get_normalization_stats()
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val/loss",
@@ -43,7 +46,8 @@ def main():
             "lats": dm.lats,
             "lons": dm.lons
         },
-        cfg_aurora=PARAMS["aurora"]
+        cfg_aurora=PARAMS["aurora"],
+        stats=stats
     )
 
     visualizer = AuroraVisualizerCallback(base_dir="docs/entrenamiento")

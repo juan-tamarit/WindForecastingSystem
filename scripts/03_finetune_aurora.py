@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from src.config import MDB, PARAMS
 from src.frame.DFmanager import DFmanager
+from datetime import datetime
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.models.visualizer import AuroraVisualizerCallback
 
@@ -31,28 +32,37 @@ def run_orchestrator():
     dfm = DFmanager()
     stats = dfm.get_normalization_stats()
     
-    # 1. Punto de partida global (definido en config o None para empezar de cero)
+    # 1. Punto de partida global
     mejor_checkpoint_global = PARAMS["aurora_base"].get("checkpoint")
     if mejor_checkpoint_global and not os.path.exists(mejor_checkpoint_global):
         mejor_checkpoint_global = None
 
-    # 2. Bucle de Fases (Fase 1, Fase 2, Fase 3...)
+    # 2. Bucle de Fases
     for nombre_fase, conf_fase in PARAMS["fases"].items():
         print(f"\n{'='*60}\n>>> INICIANDO: {nombre_fase.upper()}\n{'='*60}")
         
         mejor_loss_de_fase = float('inf')
         mejor_ckpt_de_fase = None
 
-        # 3. Bucle de Learning Rates para la fase actual
+        # 3. Bucle de Learning Rates
         for lr in conf_fase["learning_rates"]:
             lr_str = f"{lr:.0e}".replace("e-0", "e-")
-            print(f"\n[Config]: {nombre_fase} | LR: {lr_str} | Forecast: {conf_fase['forecast_hours']}h")
-            
-            # Crear ruta: checkpoints/fase1/lr_1e-4/
             ckpt_dir = os.path.join("checkpoints", nombre_fase, f"lr_{lr_str}")
             os.makedirs(ckpt_dir, exist_ok=True)
+            
+            # --- COMPROBACIÓN DE SALTO (ROBUSTA) ---
+            done_flag = os.path.join(ckpt_dir, "completed.txt")
+            if os.path.exists(done_flag):
+                print(f"[SALTANDO]: {nombre_fase} | LR: {lr_str} ya fue completado anteriormente.")
+                # Actualizamos las variables de la fase para que la siguiente fase tenga el mejor modelo
+                best_in_dir = get_best_checkpoint_from_dir(ckpt_dir)
+                if best_in_dir:
+                    mejor_ckpt_de_fase = best_in_dir
+                continue 
 
-            # Preparar configuración específica para esta iteración
+            print(f"\n[Ejecutando]: {nombre_fase} | LR: {lr_str} | Forecast: {conf_fase['forecast_hours']}h")
+
+            # Preparar configuración
             cfg_iteracion = PARAMS["aurora_base"].copy()
             cfg_iteracion.update({
                 "learning_rate": lr,
@@ -61,13 +71,11 @@ def run_orchestrator():
                 "forecast_hours": conf_fase["forecast_hours"]
             })
 
-            # DataModule con los nuevos parámetros de tiempo
+            # DataModule
             dm = AuroraDataModule(cfg_mdb=MDB, cfg_aurora=cfg_iteracion)
             dm.setup()
 
-            # Decidir qué checkpoint cargar:
-            # Prioridad 1: Si ya hay algo en la carpeta actual (resume/reinicio)
-            # Prioridad 2: El mejor de la fase anterior (mejor_checkpoint_global)
+            # Decidir carga
             path_to_load = get_best_checkpoint_from_dir(ckpt_dir) or mejor_checkpoint_global
 
             if path_to_load:
@@ -87,7 +95,7 @@ def run_orchestrator():
                     stats=stats
                 )
 
-            # Callbacks específicos para esta carpeta
+            # Callbacks
             checkpoint_callback = ModelCheckpoint(
                 monitor="val/loss",
                 dirpath=ckpt_dir,
@@ -124,18 +132,25 @@ def run_orchestrator():
             # EJECUTAR ENTRENAMIENTO
             trainer.fit(model, datamodule=dm)
 
-            # Actualizar el mejor de la fase actual para la siguiente fase
+            # --- MARCAR COMO COMPLETADO TRAS EL ÉXITO ---
+            with open(done_flag, "w", encoding='utf-8') as f:
+                f.write(f"Status: COMPLETED\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Best Loss: {checkpoint_callback.best_model_score:.4f}\n")
+                f.write(f"Best CKPT: {checkpoint_callback.best_model_path}\n")
+
+            # Actualizar el mejor de la fase
             current_best_loss = checkpoint_callback.best_model_score
             if current_best_loss is not None and current_best_loss < mejor_loss_de_fase:
                 mejor_loss_de_fase = current_best_loss
                 mejor_ckpt_de_fase = checkpoint_callback.best_model_path
 
-            # LIMPIEZA DE MEMORIA GPU
+            # LIMPIEZA
             del model, trainer, dm
             gc.collect()
             torch.cuda.empty_cache()
 
-        # Al terminar todos los LRs de la fase, el ganador absoluto se hereda
+        # Herencia entre fases
         if mejor_ckpt_de_fase:
             mejor_checkpoint_global = mejor_ckpt_de_fase
             print(f"\n>>> GANADOR FINAL DE {nombre_fase.upper()}: {mejor_checkpoint_global}")

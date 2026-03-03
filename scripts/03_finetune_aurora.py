@@ -11,15 +11,15 @@ def main():
     last_ckpt = PARAMS["auora"].get("checkpoint")
     path_to_load = last_ckpt if os.path.exists(last_ckpt) else None
 
-    # 1. Configuración del Checkpoint (Ya lo tenías, mantenemos el mejor)
     checkpoint_callback = ModelCheckpoint(
         monitor="val/loss",
         dirpath="checkpoints/",
-        filename="aurora-ERA5-{epoch:02d}-{val/loss:.4f}",
+        filename="aurora-fase1-{epoch:02d}-{val/loss:.4f}", 
         auto_insert_metric_name=False,
-        save_top_k=1,
+        save_top_k=1,          
         mode="min",
-        save_last=True
+        save_last=True,        
+        every_n_epochs=1 
     )
 
     # 2. Configuración del Early Stopping

@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from src.config import MDB, PARAMS
-from src.frame import DFmanager
+from src.frame.DFmanager import DFmanager
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping # Importamos EarlyStopping
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.models.visualizer import AuroraVisualizerCallback
@@ -27,11 +27,11 @@ def main():
 
     # 2. Configuración del Early Stopping
     early_stop_callback = EarlyStopping(
-        monitor="val/loss",      # Vigila la pérdida de validación
-        patience=15,             # Si no mejora en 15 épocas, se detiene
-        verbose=True,            # Te avisa en consola cuando para
-        mode="min",              # Buscamos minimizar la pérdida
-        min_delta=0.0001         # Mejora mínima para considerarse avance
+        monitor="val/loss",      
+        patience=15,             
+        verbose=True,            
+        mode="min",              
+        min_delta=0.0001         
     )
 
     dm = AuroraDataModule(

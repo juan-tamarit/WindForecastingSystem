@@ -13,12 +13,12 @@ data:
 aurora: 
   checkpoint: "checkpoints/last.ckpt"
   batch_size: 2
-  epochs: 19
-  learning_rate: 5.0e-6
+  epochs: 100
+  learning_rate: 1.0e-4
   weight_decay: 1e-4  
   num_workers: 4
   train_split: 0.7
   input_hours: 24
-  target_hours: 6
-  forecast_hours: 24
+  target_hours: 1
+  forecast_hours: 1
   scheduler_eta_min: 1e-6

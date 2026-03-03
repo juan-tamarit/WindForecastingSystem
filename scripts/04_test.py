@@ -5,7 +5,7 @@ import pandas as pd
 import torch.nn.functional as F
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.config import MDB, PARAMS
-from src.frame import DFmanager
+from src.frame.DFmanager import DFmanager
 
 def extract_loss(path):
     try:

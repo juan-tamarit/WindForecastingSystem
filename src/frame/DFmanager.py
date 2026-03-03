@@ -36,3 +36,52 @@ class DFmanager:
         df["time_idx"] = ((df["valid_time"] - base_time).dt.total_seconds() // 3600).astype(np.int32)
         df["location_id"] = df.groupby(["latitude", "longitude"], sort=False, observed=True).ngroup().astype(np.int32)
         return df
+    def get_normalization_stats(self):
+        """
+        Calcula media y desviación estándar directamente en MongoDB (collection_pro).
+        Se usa para la normalización Z-score en el entrenamiento de Aurora.
+        """
+        print("--- Calculando estadísticas de normalización en collection_pro ---")
+        
+        # Pipeline optimizado para las variables que Aurora necesita
+        pipeline = [
+            {"$group": {
+                "_id": None,
+                "avg_2t":  {"$avg": "$t2m"},
+                "std_2t":  {"$stdDevPop": "$t2m"},
+                "avg_10u": {"$avg": "$u10"},
+                "std_10u": {"$stdDevPop": "$u10"},
+                "avg_10v": {"$avg": "$v10"},
+                "std_10v": {"$stdDevPop": "$v10"},
+                "avg_msl": {"$avg": "$msl"},
+                "std_msl": {"$stdDevPop": "$msl"}
+            }}
+        ]
+        
+        try:
+            # Ejecutamos sobre la colección procesada (la que usa el DataModule)
+            results = list(self.collection_pro.aggregate(pipeline))
+            
+            if not results:
+                raise ValueError("La colección 'collection_pro' está vacía o no existe.")
+                
+            res = results[0]
+            stats = {
+                "2t":  {"mean": float(res["avg_2t"]),  "std": float(res["std_2t"])},
+                "10u": {"mean": float(res["avg_10u"]), "std": float(res["std_10u"])},
+                "10v": {"mean": float(res["avg_10v"]), "std": float(res["std_10v"])},
+                "msl": {"mean": float(res["avg_msl"]), "std": float(res["std_msl"])}
+            }
+            
+            # Limpieza de seguridad: evitar divisiones por cero si los datos son constantes
+            for var, val in stats.items():
+                if val["std"] == 0 or val["std"] is None:
+                    stats[var]["std"] = 1.0
+                    print(f"Aviso: Desviación estándar de {var} es 0. Ajustada a 1.0.")
+            
+            print("Estadísticas obtenidas con éxito.")
+            return stats
+
+        except Exception as e:
+            print(f"Error al calcular estadísticas en MongoDB: {e}")
+            return None

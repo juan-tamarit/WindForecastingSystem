@@ -5,6 +5,7 @@ import pandas as pd
 import torch.nn.functional as F
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.config import MDB, PARAMS
+from src.frame import DFmanager
 
 def extract_loss(path):
     try:
@@ -39,6 +40,10 @@ def run_test():
     dm.setup()
     test_loader = dm.test_dataloader()
 
+    # 1. Obtener stats para que el modelo sepa normalizar/desnormalizar
+    dfm = DFmanager()
+    stats = dfm.get_normalization_stats()
+
     checkpoint_path = get_best_checkpoint()
     if not checkpoint_path:
         print(f"No se han encontrado checkpoints en /checkpoints.")
@@ -49,13 +54,14 @@ def run_test():
     model = AuroraFinetuner.load_from_checkpoint(
         checkpoint_path,
         cfg_coords={"lats": dm.lats, "lons": dm.lons},
-        cfg_aurora=PARAMS["aurora"]
+        cfg_aurora=PARAMS["aurora"],
+        stats=stats # <--- PASAMOS LAS STATS AQUÍ
     )
     model.eval().cuda()
 
     results = []
     eps = 1e-5
-    print("Iniciando inferencia autorregresiva (24h) sobre conjunto de Test...")
+    print("Iniciando inferencia autorregresiva (24h) con DESNORMALIZACIÓN...")
 
     with torch.no_grad():
         for i, batch in enumerate(test_loader):
@@ -65,38 +71,49 @@ def run_test():
             
             batch = to_cuda(batch)
 
+            # 2. NORMALIZAR INPUTS Y TARGETS ANTES DE EMPEZAR
+            # (Igual que hacemos en el shared_step del entrenamiento)
+            for k in ("2t", "10u", "10v", "msl"):
+                batch["inputs"][k] = model.normalize(batch["inputs"][k], k)
+                for step_key in batch["targets"]:
+                    batch["targets"][step_key][k] = model.normalize(batch["targets"][step_key][k], k)
+
             aurora_batch = model.prepare_aurora_batch(batch)
             
-            
-            persist_u = batch["inputs"]["10u"][:, 1][..., model.lon_indices]
-            persist_v = batch["inputs"]["10v"][:, 1][..., model.lon_indices]
+            # Persistencia (ahora está en espacio normalizado, hay que desnormalizarla luego)
+            persist_u_norm = batch["inputs"]["10u"][:, 1][..., model.lon_indices]
+            persist_v_norm = batch["inputs"]["10v"][:, 1][..., model.lon_indices]
 
-            
             n_steps = len(batch["targets"])
             for s in range(1, n_steps + 1):
-                
                 prediction = model(aurora_batch)
-                
                 target_key = f"step_{s}"
-                t_u = batch["targets"][target_key]["10u"][..., model.lon_indices].squeeze(1)
-                t_v = batch["targets"][target_key]["10v"][..., model.lon_indices].squeeze(1)
                 
-                pred_u = prediction.surf_vars["10u"].squeeze(1)
-                pred_v = prediction.surf_vars["10v"].squeeze(1)
+                # Targets y Predicciones NORMALIZADOS
+                t_u_norm = batch["targets"][target_key]["10u"][..., model.lon_indices].squeeze(1)
+                t_v_norm = batch["targets"][target_key]["10v"][..., model.lon_indices].squeeze(1)
+                p_u_norm = prediction.surf_vars["10u"].squeeze(1)
+                p_v_norm = prediction.surf_vars["10v"].squeeze(1)
 
+                # 3. DESNORMALIZAR PARA MÉTRICAS REALES
+                p_u_real = model.denormalize(p_u_norm, "10u")
+                p_v_real = model.denormalize(p_v_norm, "10v")
+                t_u_real = model.denormalize(t_u_norm, "10u")
+                t_v_real = model.denormalize(t_v_norm, "10v")
+                per_u_real = model.denormalize(persist_u_norm, "10u")
+                per_v_real = model.denormalize(persist_v_norm, "10v")
+
+                # RMSE Aurora (Unidades físicas)
+                rmse_aur = torch.sqrt(F.mse_loss(p_u_real, t_u_real) + F.mse_loss(p_v_real, t_v_real))
+                mae_aur = F.l1_loss(p_u_real, t_u_real) + F.l1_loss(p_v_real, t_v_real)
                 
-                mse_step = F.mse_loss(pred_u, t_u) + F.mse_loss(pred_v, t_v)
-                rmse_aur = torch.sqrt(mse_step)
-                
-                
-                mae_aur = F.l1_loss(pred_u, t_u) + F.l1_loss(pred_v, t_v)
-                
-                
-                mape_u = torch.mean(torch.abs((t_u - pred_u) / (t_u + eps)))
-                mape_v = torch.mean(torch.abs((t_v - pred_v) / (t_v + eps)))
+                # MAPE Aurora
+                mape_u = torch.mean(torch.abs((t_u_real - p_u_real) / (t_u_real + eps)))
+                mape_v = torch.mean(torch.abs((t_v_real - p_v_real) / (t_v_real + eps)))
                 mape_aur = (mape_u + mape_v) / 2 * 100
 
-                rmse_per = torch.sqrt(F.mse_loss(persist_u, t_u) + F.mse_loss(persist_v, t_v))
+                # RMSE Persistencia (Unidades físicas)
+                rmse_per = torch.sqrt(F.mse_loss(per_u_real, t_u_real) + F.mse_loss(per_v_real, t_v_real))
 
                 results.append({
                     "batch_idx": i,

@@ -11,21 +11,25 @@ from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.models.visualizer import AuroraVisualizerCallback
 
 def get_best_checkpoint_from_dir(dir_path):
-    """
-    Busca el archivo .ckpt con el menor val/loss en una carpeta específica.
-    Formato esperado: aurora-epoch=XX-val/loss=X.XXXX.ckpt
-    """
+    # 1. Si existe 'last.ckpt', es nuestra prioridad para retomar
+    last_path = os.path.join(dir_path, "last.ckpt")
+    if os.path.exists(last_path):
+        return last_path
+
+    # 2. Si no hay last, buscamos el mejor por pérdida
     ckpts = glob.glob(os.path.join(dir_path, "*.ckpt"))
     ckpts = [c for c in ckpts if "last" not in c]
+    
     if not ckpts:
         return None
     
     try:
-        # Extrae el valor numérico después de 'loss=' para comparar
-        return min(ckpts, key=lambda x: float(x.split('loss=')[-1].replace('.ckpt', '')))
-    except Exception as e:
-        print(f"Error parseando checkpoints en {dir_path}: {e}")
-        return ckpts[0] # Fallback al primero que encuentre
+        # Usamos os.path.basename para evitar líos con las rutas de Windows (\)
+        return min(ckpts, key=lambda x: float(os.path.basename(x).split('loss=')[-1].replace('.ckpt', '')))
+    except Exception:
+        # Si el nombre no tiene el formato esperado, devolvemos el más reciente por fecha de archivo
+        ckpts.sort(key=os.path.getmtime)
+        return ckpts[-1]
 
 def run_orchestrator():
     torch.set_float32_matmul_precision('medium')

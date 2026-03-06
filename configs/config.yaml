@@ -18,7 +18,7 @@ aurora_base:
   train_split: 0.7
   input_hours: 24
   scheduler_eta_min: 1e-6
-  checkpoint: null 
+  checkpoint: "checkpoints/fase1/lr_1e-4/aurora-01-0.2915.ckpt" 
 
 # Planificación del fin de semana
 fases:
@@ -35,7 +35,7 @@ fases:
     forecast_hours: 6
   
   fase3: # Refinado final para horizontes largos
-    epochs: 50
+    epochs: 100
     learning_rates: [1.0e-5, 5.0e-6, 1.0e-6]
     target_hours: 1
     forecast_hours: 24

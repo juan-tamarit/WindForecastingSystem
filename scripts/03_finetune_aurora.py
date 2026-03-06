@@ -2,6 +2,7 @@ import os
 import gc
 import torch
 import glob
+import sys
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from src.config import MDB, PARAMS
@@ -10,63 +11,64 @@ from datetime import datetime
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.models.visualizer import AuroraVisualizerCallback
 
-def get_best_checkpoint_from_dir(dir_path):
-    # 1. Si existe 'last.ckpt', es nuestra prioridad para retomar
+def get_best_checkpoint_from_dir(dir_path, force_best=False):
+    """
+    force_best=True: Busca el .ckpt con menor loss (para herencia entre etapas).
+    force_best=False: Prioriza 'last' para reanudar sesiones en la misma carpeta.
+    """
     last_path = os.path.join(dir_path, "last.ckpt")
+    
+    if force_best:
+        ckpts = glob.glob(os.path.join(dir_path, "*.ckpt"))
+        ckpts = [c for c in ckpts if "last" not in c]
+        if ckpts:
+            try:
+                # Busca el valor numérico después del último '-' (formato: aurora-epoch=01-0.2915.ckpt)
+                return min(ckpts, key=lambda x: float(os.path.basename(x).split('-')[-1].replace('.ckpt', '')))
+            except:
+                ckpts.sort(key=os.path.getmtime)
+                return ckpts[-1]
+
     if os.path.exists(last_path):
         return last_path
-
-    # 2. Si no hay last, buscamos el mejor por pérdida
+    
     ckpts = glob.glob(os.path.join(dir_path, "*.ckpt"))
-    ckpts = [c for c in ckpts if "last" not in c]
-    
-    if not ckpts:
-        return None
-    
-    try:
-        # Usamos os.path.basename para evitar líos con las rutas de Windows (\)
-        return min(ckpts, key=lambda x: float(os.path.basename(x).split('loss=')[-1].replace('.ckpt', '')))
-    except Exception:
-        # Si el nombre no tiene el formato esperado, devolvemos el más reciente por fecha de archivo
+    if ckpts:
         ckpts.sort(key=os.path.getmtime)
         return ckpts[-1]
+        
+    return None
 
 def run_orchestrator():
     torch.set_float32_matmul_precision('medium')
     dfm = DFmanager()
     stats = dfm.get_normalization_stats()
     
-    # 1. Punto de partida global
     mejor_checkpoint_global = PARAMS["aurora_base"].get("checkpoint")
     if mejor_checkpoint_global and not os.path.exists(mejor_checkpoint_global):
         mejor_checkpoint_global = None
 
-    # 2. Bucle de Fases
     for nombre_fase, conf_fase in PARAMS["fases"].items():
         print(f"\n{'='*60}\n>>> INICIANDO: {nombre_fase.upper()}\n{'='*60}")
-        
         mejor_loss_de_fase = float('inf')
         mejor_ckpt_de_fase = None
 
-        # 3. Bucle de Learning Rates
         for lr in conf_fase["learning_rates"]:
             lr_str = f"{lr:.0e}".replace("e-0", "e-")
             ckpt_dir = os.path.join("checkpoints", nombre_fase, f"lr_{lr_str}")
             os.makedirs(ckpt_dir, exist_ok=True)
             
-            # --- COMPROBACIÓN DE SALTO (ROBUSTA) ---
             done_flag = os.path.join(ckpt_dir, "completed.txt")
             if os.path.exists(done_flag):
-                print(f"[SALTANDO]: {nombre_fase} | LR: {lr_str} ya fue completado anteriormente.")
-                # Actualizamos las variables de la fase para que la siguiente fase tenga el mejor modelo
-                best_in_dir = get_best_checkpoint_from_dir(ckpt_dir)
+                print(f"[SALTANDO]: {nombre_fase} | LR: {lr_str} ya completado.")
+                best_in_dir = get_best_checkpoint_from_dir(ckpt_dir, force_best=True)
                 if best_in_dir:
+                    mejor_checkpoint_global = best_in_dir 
                     mejor_ckpt_de_fase = best_in_dir
                 continue 
 
             print(f"\n[Ejecutando]: {nombre_fase} | LR: {lr_str} | Forecast: {conf_fase['forecast_hours']}h")
 
-            # Preparar configuración
             cfg_iteracion = PARAMS["aurora_base"].copy()
             cfg_iteracion.update({
                 "learning_rate": lr,
@@ -75,12 +77,11 @@ def run_orchestrator():
                 "forecast_hours": conf_fase["forecast_hours"]
             })
 
-            # DataModule
             dm = AuroraDataModule(cfg_mdb=MDB, cfg_aurora=cfg_iteracion)
             dm.setup()
 
-            # Decidir carga
-            path_to_load = get_best_checkpoint_from_dir(ckpt_dir) or mejor_checkpoint_global
+            # REQUISITO: Prioridad last en local, si no, mejor global de etapa anterior
+            path_to_load = get_best_checkpoint_from_dir(ckpt_dir, force_best=False) or mejor_checkpoint_global
 
             if path_to_load:
                 print(f"--- Cargando pesos desde: {path_to_load} ---")
@@ -92,14 +93,8 @@ def run_orchestrator():
                     strict=False
                 )
             else:
-                print("--- Iniciando desde pesos Aurora Small base ---")
-                model = AuroraFinetuner(
-                    cfg_coords={"lats": dm.lats, "lons": dm.lons},
-                    cfg_aurora=cfg_iteracion,
-                    stats=stats
-                )
+                model = AuroraFinetuner(cfg_coords={"lats": dm.lats, "lons": dm.lons}, cfg_aurora=cfg_iteracion, stats=stats)
 
-            # Callbacks
             checkpoint_callback = ModelCheckpoint(
                 monitor="val/loss",
                 dirpath=ckpt_dir,
@@ -110,18 +105,6 @@ def run_orchestrator():
                 save_last=True
             )
             
-            early_stop = EarlyStopping(
-                monitor="val/loss", 
-                patience=15, 
-                mode="min", 
-                min_delta=0.0001
-            )
-            
-            visualizer = AuroraVisualizerCallback(
-                base_dir=os.path.join("docs/entrenamiento", nombre_fase, f"lr_{lr_str}")
-            )
-
-            # Trainer
             trainer = pl.Trainer(
                 accelerator="gpu",
                 devices=1,
@@ -129,36 +112,34 @@ def run_orchestrator():
                 max_epochs=cfg_iteracion["epochs"],
                 accumulate_grad_batches=192,
                 gradient_clip_val=0.5,
-                callbacks=[checkpoint_callback, early_stop, visualizer],
+                callbacks=[checkpoint_callback, EarlyStopping(monitor="val/loss", patience=15,min_delta=0.0001,mode="min"), AuroraVisualizerCallback(base_dir=os.path.join("docs/entrenamiento", nombre_fase, f"lr_{lr_str}"))],
                 log_every_n_steps=10
             )
 
-            # EJECUTAR ENTRENAMIENTO
-            trainer.fit(model, datamodule=dm)
+            try:
+                trainer.fit(model, datamodule=dm)
+                
+                with open(done_flag, "w", encoding='utf-8') as f:
+                    f.write(f"Status: COMPLETED\nTimestamp: {datetime.now()}\nBest Loss: {checkpoint_callback.best_model_score:.4f}\n")
 
-            # --- MARCAR COMO COMPLETADO TRAS EL ÉXITO ---
-            with open(done_flag, "w", encoding='utf-8') as f:
-                f.write(f"Status: COMPLETED\n")
-                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Best Loss: {checkpoint_callback.best_model_score:.4f}\n")
-                f.write(f"Best CKPT: {checkpoint_callback.best_model_path}\n")
+                # REQUISITO: Al terminar con éxito, este se vuelve el 'mejor global' para el siguiente paso
+                if checkpoint_callback.best_model_path:
+                    mejor_checkpoint_global = checkpoint_callback.best_model_path
+                    if checkpoint_callback.best_model_score < mejor_loss_de_fase:
+                        mejor_loss_de_fase = checkpoint_callback.best_model_score
+                        mejor_ckpt_de_fase = checkpoint_callback.best_model_path
 
-            # Actualizar el mejor de la fase
-            current_best_loss = checkpoint_callback.best_model_score
-            if current_best_loss is not None and current_best_loss < mejor_loss_de_fase:
-                mejor_loss_de_fase = current_best_loss
-                mejor_ckpt_de_fase = checkpoint_callback.best_model_path
+            except KeyboardInterrupt:
+                print("\n[PAUSA] Interrumpido por usuario.")
+                sys.exit(0)
 
-            # LIMPIEZA
             del model, trainer, dm
             gc.collect()
             torch.cuda.empty_cache()
 
-        # Herencia entre fases
         if mejor_ckpt_de_fase:
             mejor_checkpoint_global = mejor_ckpt_de_fase
-            print(f"\n>>> GANADOR FINAL DE {nombre_fase.upper()}: {mejor_checkpoint_global}")
-            print(f">>> LOSS: {mejor_loss_de_fase:.4f}")
+            print(f"\n>>> GANADOR FASE {nombre_fase.upper()}: {mejor_checkpoint_global}")
 
 if __name__ == "__main__":
     run_orchestrator()

@@ -38,4 +38,4 @@ fases:
     epochs: 100
     learning_rates: [1.0e-5, 5.0e-6, 1.0e-6]
     target_hours: 1
-    forecast_hours: 24
+    forecast_hours: 12

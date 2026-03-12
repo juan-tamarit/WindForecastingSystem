@@ -6,7 +6,6 @@ import sys
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from src.config import MDB, PARAMS
-from src.frame.DFmanager import DFmanager
 from datetime import datetime
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.models.visualizer import AuroraVisualizerCallback
@@ -41,8 +40,6 @@ def get_best_checkpoint_from_dir(dir_path, force_best=False):
 
 def run_orchestrator():
     torch.set_float32_matmul_precision('medium')
-    dfm = DFmanager()
-    stats = dfm.get_normalization_stats()
     
     mejor_checkpoint_global = PARAMS["aurora_base"].get("checkpoint")
     if mejor_checkpoint_global and not os.path.exists(mejor_checkpoint_global):
@@ -89,7 +86,6 @@ def run_orchestrator():
                     path_to_load,
                     cfg_coords={"lats": dm.lats, "lons": dm.lons},
                     cfg_aurora=cfg_iteracion,
-                    stats=stats,
                     strict=False
                 )
             else:

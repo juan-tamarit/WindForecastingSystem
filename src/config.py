@@ -56,3 +56,10 @@ if CONFIG_PATH.exists():
         PARAMS["data"]["end_dt"] = datetime.fromisoformat(PARAMS["data"]["end"])
 else:
     raise FileNotFoundError(f"Crear configs/config.yaml en {CONFIG_PATH}")
+
+NORMALIZATION_LIMITS = {
+    "2t":  {"min": 265.0, "max": 295.0},   # Kelvin (~ -8°C a 22°C)
+    "10u": {"min": -8.0,  "max": 14.0},    # m/s
+    "10v": {"min": -11.0, "max": 17.0},    # m/s
+    "msl": {"min": 100400.0, "max": 102800.0} # Pa
+}

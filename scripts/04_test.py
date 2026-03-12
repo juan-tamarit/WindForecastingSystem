@@ -5,7 +5,6 @@ import pandas as pd
 import torch.nn.functional as F
 from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 from src.config import MDB, PARAMS
-from src.frame.DFmanager import DFmanager
 
 def extract_loss(path):
     try:
@@ -36,13 +35,22 @@ def get_best_checkpoint(checkpoint_dir="checkpoints/"):
     return min(ckpts, key=extract_loss)
 
 def run_test():
-    dm = AuroraDataModule(cfg_mdb=MDB, cfg_aurora=PARAMS["aurora"])
+    FASE_OBJETIVO = "fase2"
+
+    cfg_test = PARAMS["aurora_base"].copy()
+    conf_fase = PARAMS["fases"][FASE_OBJETIVO]
+
+    cfg_test.update({
+        "epochs": conf_fase["epochs"],
+        "target_hours": conf_fase["target_hours"],
+        "forecast_hours": conf_fase["forecast_hours"],
+        "learning_rate": conf_fase["learning_rates"][-1] # Usamos el último LR
+    })
+
+    dm = AuroraDataModule(cfg_mdb=MDB, cfg_aurora=cfg_test)
     dm.setup()
     test_loader = dm.test_dataloader()
 
-    # 1. Obtener stats para que el modelo sepa normalizar/desnormalizar
-    dfm = DFmanager()
-    stats = dfm.get_normalization_stats()
 
     checkpoint_path = get_best_checkpoint()
     if not checkpoint_path:
@@ -54,14 +62,13 @@ def run_test():
     model = AuroraFinetuner.load_from_checkpoint(
         checkpoint_path,
         cfg_coords={"lats": dm.lats, "lons": dm.lons},
-        cfg_aurora=PARAMS["aurora"],
-        stats=stats # <--- PASAMOS LAS STATS AQUÍ
+        cfg_aurora=cfg_test
     )
     model.eval().cuda()
 
     results = []
     eps = 1e-5
-    print("Iniciando inferencia autorregresiva (24h) con DESNORMALIZACIÓN...")
+    print("Iniciando inferencia autorregresiva (12h) con DESNORMALIZACIÓN...")
 
     with torch.no_grad():
         for i, batch in enumerate(test_loader):

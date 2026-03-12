@@ -7,6 +7,7 @@ from datetime import datetime
 from torch.utils.data import Dataset, DataLoader
 from pymongo import MongoClient
 import numpy as np
+from src.config import NORMALIZATION_LIMITS
 
 class AuroraMongoDataset(Dataset):
     def __init__(self, times, cfg_mdb, lats_torch, lons_torch, cfg_aurora):
@@ -173,23 +174,18 @@ class AuroraDataModule(pl.LightningDataModule):
             AuroraMongoDataset(self.test_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora),
             batch_size=self.batch_size, 
             shuffle=False, 
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
+            persistent_workers=True
         )
 
 class AuroraFinetuner(pl.LightningModule):
-    def __init__(self, cfg_coords, cfg_aurora, stats): # Añadimos stats aquí
+    def __init__(self, cfg_coords, cfg_aurora):
         super().__init__()
         self.save_hyperparameters(ignore=['stats']) 
         self.cfg_aurora = cfg_aurora
         self.model = AuroraSmallPretrained()
         self.model.load_checkpoint() 
         
-        # Guardamos las estadísticas calculadas por DFmanager
-        self.stats = stats
-        for var in ["2t", "10u", "10v", "msl"]:
-            self.register_buffer(f"{var}_mu", torch.tensor(stats[var]["mean"]))
-            self.register_buffer(f"{var}_sigma", torch.tensor(stats[var]["std"]))
-
         lons_raw = cfg_coords["lons"]
         lons_mod = lons_raw % 360
         sorted_vals, sorted_indices = torch.sort(lons_mod)
@@ -200,14 +196,16 @@ class AuroraFinetuner(pl.LightningModule):
 
     # --- NUEVOS MÉTODOS DE NORMALIZACIÓN ---
     def normalize(self, tensor, var_name):
-        mu = getattr(self, f"{var_name}_mu")
-        sigma = getattr(self, f"{var_name}_sigma")
-        return (tensor - mu) / sigma
+        lim = NORMALIZATION_LIMITS[var_name]
+        # Escalado Min-Max
+        norm = (tensor - lim["min"]) / (lim["max"] - lim["min"])
+        # Seguridad: forzamos que el valor esté en el rango [0, 1]
+        return torch.clamp(norm, 0.0, 1.0)
 
     def denormalize(self, tensor, var_name):
-        mu = getattr(self, f"{var_name}_mu")
-        sigma = getattr(self, f"{var_name}_sigma")
-        return (tensor * sigma) + mu
+        lim = NORMALIZATION_LIMITS[var_name]
+        # Reversión a unidades físicas
+        return (tensor * (lim["max"] - lim["min"])) + lim["min"]
 
     def prepare_aurora_batch(self, mongo_dict):
         device = mongo_dict["inputs"]["2t"].device

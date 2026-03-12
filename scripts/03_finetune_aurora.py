@@ -89,7 +89,7 @@ def run_orchestrator():
                     strict=False
                 )
             else:
-                model = AuroraFinetuner(cfg_coords={"lats": dm.lats, "lons": dm.lons}, cfg_aurora=cfg_iteracion, stats=stats)
+                model = AuroraFinetuner(cfg_coords={"lats": dm.lats, "lons": dm.lons}, cfg_aurora=cfg_iteracion)
 
             checkpoint_callback = ModelCheckpoint(
                 monitor="val/loss",

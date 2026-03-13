@@ -7,7 +7,6 @@ from datetime import datetime
 from torch.utils.data import Dataset, DataLoader
 from pymongo import MongoClient
 import numpy as np
-from src.config import NORMALIZATION_LIMITS
 
 class AuroraMongoDataset(Dataset):
     def __init__(self, times, cfg_mdb, lats_torch, lons_torch, cfg_aurora):
@@ -194,24 +193,11 @@ class AuroraFinetuner(pl.LightningModule):
         self.register_buffer("lons_sorted", sorted_vals)
         self.register_buffer("lats", cfg_coords["lats"])
 
-    # --- NUEVOS MÉTODOS DE NORMALIZACIÓN ---
-    def normalize(self, tensor, var_name):
-        lim = NORMALIZATION_LIMITS[var_name]
-        # Escalado Min-Max
-        norm = (tensor - lim["min"]) / (lim["max"] - lim["min"])
-        # Seguridad: forzamos que el valor esté en el rango [0, 1]
-        return torch.clamp(norm, 0.0, 1.0)
-
-    def denormalize(self, tensor, var_name):
-        lim = NORMALIZATION_LIMITS[var_name]
-        # Reversión a unidades físicas
-        return (tensor * (lim["max"] - lim["min"])) + lim["min"]
 
     def prepare_aurora_batch(self, mongo_dict):
         device = mongo_dict["inputs"]["2t"].device
         current_indices = self.lon_indices.to(device)
 
-        # NOTA: mongo_dict ya vendrá normalizado desde shared_step
         surf_vars = {
             k: mongo_dict["inputs"][k][..., current_indices]
             for k in ("2t", "10u", "10v", "msl")
@@ -220,9 +206,8 @@ class AuroraFinetuner(pl.LightningModule):
         z_reordered = mongo_dict["statics"]["elevation"][..., current_indices]
         lsm_reordered = mongo_dict["statics"]["lsm"][..., current_indices]
 
-        # La elevación la escalamos por 1000 (a km) para que sea un valor pequeño estable
         static_vars = {
-            "z": z_reordered.mean(dim=0) / 1000.0,
+            "z": z_reordered.mean(dim=0) / 1000.0, 
             "lsm": lsm_reordered.mean(dim=0)
         }
 
@@ -248,11 +233,6 @@ class AuroraFinetuner(pl.LightningModule):
         return self.model(batch)
 
     def shared_step(self, mongo_batch, stage):
-        # 1. APLICAR NORMALIZACIÓN A TODO EL BATCH ANTES DE PROCESAR
-        for k in ("2t", "10u", "10v", "msl"):
-            mongo_batch["inputs"][k] = self.normalize(mongo_batch["inputs"][k], k)
-            for step_key in mongo_batch["targets"]:
-                mongo_batch["targets"][step_key][k] = self.normalize(mongo_batch["targets"][step_key][k], k)
 
         aurora_batch = self.prepare_aurora_batch(mongo_batch)
         total_loss = 0
@@ -262,38 +242,34 @@ class AuroraFinetuner(pl.LightningModule):
             prediction = self(aurora_batch)
             target_key = f"step_{s}"
             
-            # Targets normalizados
-            t_u_norm = mongo_batch["targets"][target_key]["10u"][..., self.lon_indices]
-            t_v_norm = mongo_batch["targets"][target_key]["10v"][..., self.lon_indices]
+
+            t_u = mongo_batch["targets"][target_key]["10u"][..., self.lon_indices]
+            t_v = mongo_batch["targets"][target_key]["10v"][..., self.lon_indices]
+            t_2t = mongo_batch["targets"][target_key]["2t"][..., self.lon_indices]
+            t_msl = mongo_batch["targets"][target_key]["msl"][..., self.lon_indices]
             
-            # Loss en escala normalizada (esto es lo que estabiliza el entrenamiento)
-            mse_u = F.mse_loss(prediction.surf_vars["10u"], t_u_norm)
-            mse_v = F.mse_loss(prediction.surf_vars["10v"], t_v_norm)
-            step_loss = mse_u + mse_v
+            mse_u = F.mse_loss(prediction.surf_vars["10u"], t_u)
+            mse_v = F.mse_loss(prediction.surf_vars["10v"], t_v)
+            mse_2t = F.mse_loss(prediction.surf_vars["2t"], t_2t)
+            mse_msl = F.mse_loss(prediction.surf_vars["msl"] / 500.0, t_msl / 500.0) 
+            
+            step_loss = (mse_u + mse_v) + 0.1*(mse_2t + mse_msl)
             total_loss += step_loss
             
-            # DESNORMALIZACIÓN para métricas legibles (RMSE, MAE, MAPE en unidades reales)
-            p_u_real = self.denormalize(prediction.surf_vars["10u"], "10u")
-            p_v_real = self.denormalize(prediction.surf_vars["10v"], "10v")
-            t_u_real = self.denormalize(t_u_norm, "10u")
-            t_v_real = self.denormalize(t_v_norm, "10v")
+            rmse_step = torch.sqrt(mse_u + mse_v)
+            step_mae = F.l1_loss(prediction.surf_vars["10u"], t_u) + \
+                       F.l1_loss(prediction.surf_vars["10v"], t_v)
 
-            # Cálculo de RMSE Real
-            rmse_step = torch.sqrt(F.mse_loss(p_u_real, t_u_real) + F.mse_loss(p_v_real, t_v_real))
-            step_mae = F.l1_loss(p_u_real, t_u_real) + F.l1_loss(p_v_real, t_v_real)
-
-            eps = 1e-5
-            mape_u = torch.mean(torch.abs((t_u_real - p_u_real) / (t_u_real + eps)))
-            mape_v = torch.mean(torch.abs((t_v_real - p_v_real) / (t_v_real + eps)))
+            eps = 0.5 
+            mape_u = torch.mean(torch.abs((t_u - prediction.surf_vars["10u"]) / (t_u + eps)))
+            mape_v = torch.mean(torch.abs((t_v - prediction.surf_vars["10v"]) / (t_v + eps)))
             step_mape = (mape_u + mape_v) / 2 * 100 
 
-            # Logs con valores físicos (m/s)
             self.log(f"{stage}/rmse_step_{s}", rmse_step, prog_bar=(s==1))
             self.log(f"{stage}/mae_step_{s}", step_mae)
             self.log(f"{stage}/mape_step_{s}", step_mape)
 
             if s < n_steps:
-                # La autoregresión sigue ocurriendo en el espacio normalizado
                 new_surf_vars = {
                     k: torch.stack([
                         aurora_batch.surf_vars[k][:, 1], 
@@ -318,7 +294,6 @@ class AuroraFinetuner(pl.LightningModule):
             lr=float(self.cfg_aurora["learning_rate"]),
             weight_decay=float(self.cfg_aurora["weight_decay"])
         )
-    
         
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,

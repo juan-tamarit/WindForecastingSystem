@@ -71,7 +71,8 @@ def run_orchestrator():
                 "learning_rate": lr,
                 "epochs": conf_fase["epochs"],
                 "target_hours": conf_fase["target_hours"],
-                "forecast_hours": conf_fase["forecast_hours"]
+                "forecast_hours": conf_fase["forecast_hours"],
+                "min_delta": conf_fase["min_delta"]
             })
 
             dm = AuroraDataModule(cfg_mdb=MDB, cfg_aurora=cfg_iteracion)
@@ -108,7 +109,7 @@ def run_orchestrator():
                 max_epochs=cfg_iteracion["epochs"],
                 accumulate_grad_batches=192,
                 gradient_clip_val=0.5,
-                callbacks=[checkpoint_callback, EarlyStopping(monitor="val/loss", patience=15,min_delta=0.0001,mode="min"), AuroraVisualizerCallback(base_dir=os.path.join("docs/entrenamiento", nombre_fase, f"lr_{lr_str}"))],
+                callbacks=[checkpoint_callback, EarlyStopping(monitor="val/loss", patience=15,min_delta=cfg_iteracion["min_delta"],mode="min"), AuroraVisualizerCallback(base_dir=os.path.join("docs/entrenamiento", nombre_fase, f"lr_{lr_str}"))],
                 log_every_n_steps=10
             )
 

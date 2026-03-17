@@ -1,0 +1,2 @@
+train/rmse_step_1,train/mae_step_1,train/mape_step_1,train/loss,val/rmse_step_1,val/mae_step_1,val/mape_step_1,val/loss
+0.7563315033912659,0.8304276466369629,545.0,0.7258650064468384,0.7295737266540527,0.7594939470291138,inf,1.352060317993164

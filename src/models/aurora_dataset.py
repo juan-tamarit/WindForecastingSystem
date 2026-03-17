@@ -260,14 +260,8 @@ class AuroraFinetuner(pl.LightningModule):
             step_mae = F.l1_loss(prediction.surf_vars["10u"], t_u) + \
                        F.l1_loss(prediction.surf_vars["10v"], t_v)
 
-            eps = 0.5 
-            mape_u = torch.mean(torch.abs((t_u - prediction.surf_vars["10u"]) / (t_u + eps)))
-            mape_v = torch.mean(torch.abs((t_v - prediction.surf_vars["10v"]) / (t_v + eps)))
-            step_mape = (mape_u + mape_v) / 2 * 100 
-
             self.log(f"{stage}/rmse_step_{s}", rmse_step, prog_bar=(s==1))
             self.log(f"{stage}/mae_step_{s}", step_mae)
-            self.log(f"{stage}/mape_step_{s}", step_mape)
 
             if s < n_steps:
                 new_surf_vars = {

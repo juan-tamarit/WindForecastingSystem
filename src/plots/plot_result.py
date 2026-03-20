@@ -22,7 +22,6 @@ def plot_latest_results():
         'rmse_aurora': 'mean',
         'mae_aurora': 'mean',
         'rmse_persist': 'mean',
-        'mape_aurora': 'mean'
     }).reset_index()
     
     # Cálculo del Skill Score: (ErrorPersistencia - ErrorAurora) / ErrorPersistencia

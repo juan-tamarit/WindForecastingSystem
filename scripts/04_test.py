@@ -35,7 +35,7 @@ def get_best_checkpoint(checkpoint_dir="checkpoints/"):
     return min(ckpts, key=extract_loss)
 
 def run_test():
-    FASE_OBJETIVO = "fase2"
+    FASE_OBJETIVO = "fase3"
 
     cfg_test = PARAMS["aurora_base"].copy()
     conf_fase = PARAMS["fases"][FASE_OBJETIVO]
@@ -129,7 +129,6 @@ def run_test():
     summary = df.groupby('step').agg({
         'rmse_aurora': 'mean',
         'mae_aurora': 'mean',
-        'mape_aurora': 'mean',
         'rmse_persist': 'mean'
     })
     

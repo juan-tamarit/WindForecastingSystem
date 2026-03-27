@@ -37,7 +37,7 @@ fases:
     min_delta: 0.01
   
   fase3: # Refinado final para horizontes largos
-    epochs: 100
+    epochs: 25
     learning_rates: [1.0e-5, 5.0e-6, 1.0e-6]
     target_hours: 1
     forecast_hours: 12

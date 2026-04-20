@@ -10,14 +10,35 @@ data:
       start: -10.0
       stop: 4.0
       step: 0.25
-aurora: 
+# Parámetros que no cambian entre fases
+aurora_base:
   batch_size: 2
-  epochs: 19
-  learning_rate: 5.0e-6
-  weight_decay: 1e-4  
+  weight_decay: 1e-4
   num_workers: 4
   train_split: 0.7
   input_hours: 24
-  target_hours: 6
-  forecast_hours: 24
   scheduler_eta_min: 1e-6
+  checkpoint: "checkpoints/fase2/lr_5e-5/aurora-50-30.0462.ckpt" 
+
+# Planificación del fin de semana
+fases:
+  fase1: # Aprendizaje inicial y adaptación al terreno
+    epochs: 100
+    learning_rates: [2.0e-4, 1.0e-4, 5.0e-5]
+    target_hours: 1
+    forecast_hours: 1
+    min_delta: 0.0001
+  
+  fase2: # Estabilización y autorregresión corta
+    epochs: 100
+    learning_rates: [5.0e-5, 1.0e-5, 5.0e-6] 
+    target_hours: 1 
+    forecast_hours: 6
+    min_delta: 0.01
+  
+  fase3: # Refinado final para horizontes largos
+    epochs: 25
+    learning_rates: [1.0e-5, 5.0e-6, 1.0e-6]
+    target_hours: 1
+    forecast_hours: 12
+    min_delta: 0.1

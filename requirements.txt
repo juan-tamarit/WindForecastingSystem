@@ -1,0 +1,27 @@
+# Core scientific stack
+numpy==1.26.4
+pandas==2.3.1
+xarray==2024.6.0
+
+# Data access and configuration
+cdsapi==0.7.7
+pymongo==4.15.3
+python-dotenv==1.1.1
+PyYAML==6.0.3
+httpx==0.28.1
+
+# Plotting
+matplotlib==3.10.8
+seaborn==0.13.2
+
+# Deep learning
+torch==2.5.1
+pytorch-lightning==2.0.2
+torchmetrics==1.8.2
+
+# ERA5 GRIB support
+cfgrib==0.9.15.1
+eccodes==2.44.0
+
+# Aurora model package
+microsoft-aurora==1.8.1.dev12

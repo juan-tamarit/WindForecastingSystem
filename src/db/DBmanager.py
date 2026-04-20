@@ -1,37 +1,52 @@
-from pymongo import MongoClient
-from src.config import MDB
+"""Gestión de persistencia en MongoDB.
+
+Este módulo define la clase encargada de guardar las observaciones ERA5, los
+campos estáticos y la información procesada que alimenta el resto del pipeline.
+"""
+
 from datetime import datetime
 import threading
 from queue import Queue
 import time
 
+from pymongo import MongoClient
+
+from src.config import MDB
+
+
 class DBmanager:
+    """Encapsula las operaciones de lectura y escritura sobre MongoDB."""
+
     def __init__(self):
+        """Inicializa las colecciones utilizadas por el proyecto."""
+
         self.client = MongoClient(
             MDB["uri"],
             maxPoolSize=50,
-            retryWrites=True
+            retryWrites=True,
         )
-        self.db=self.client[MDB["db_name"]]
-        self.collection_era=self.db[MDB["collection_era"]]
-        self.collection_z=self.db[MDB["collection_z"]]
-        self.collection_pro=self.db[MDB["collection_pro"]]
-        self._bulk_queue = Queue(maxsize=1000)  # Buffer bulk inserts
+        self.db = self.client[MDB["db_name"]]
+        self.collection_era = self.db[MDB["collection_era"]]
+        self.collection_z = self.db[MDB["collection_z"]]
+        self.collection_pro = self.db[MDB["collection_pro"]]
+        self._bulk_queue = Queue(maxsize=1000)
         self._bulk_thread = threading.Thread(target=self._bulk_worker, daemon=True)
         self._bulk_thread.start()
 
     def _bulk_worker(self):
+        """Inserta en segundo plano los documentos acumulados en la cola."""
+
         while True:
             batch = []
             start_time = time.time()
-        
-            while (time.time() - start_time < 5 and len(batch) < 1000 and not self._bulk_queue.empty()):
+
+            while time.time() - start_time < 5 and len(batch) < 1000 and not self._bulk_queue.empty():
                 try:
                     batch.append(self._bulk_queue.get(timeout=0.5))
-                except:
+                except Exception:
                     break
-        
-            if batch:  # Works with single docs too
+
+            if batch:
                 try:
                     self.collection_era.insert_many(batch, ordered=False)
                 except Exception as e:
@@ -39,48 +54,56 @@ class DBmanager:
                     for doc in batch:
                         try:
                             self.collection_era.insert_one(doc)
-                        except:
+                        except Exception:
                             pass
 
-    def loadIntoDB(self,data, control:int=1):
+    def loadIntoDB(self, data, control=1):
+        """Inserta datos ERA5 y añade variables estáticas cuando corresponde."""
+
         if not data:
             return
         try:
             static_dict = self.loadStaticDictMongo()
-            processed_data=[]
+            processed_data = []
             for doc in data:
-                doc=doc.copy()
-                doc['valid_time'] = datetime.strptime(doc['valid_time'], "%Y-%m-%d %H:%M:%S")
-                if control==1 and static_dict:
-                    lat = round(float(doc['latitude']), 2)
-                    lon = round(float(doc['longitude']), 2)
+                doc = doc.copy()
+                doc["valid_time"] = datetime.strptime(doc["valid_time"], "%Y-%m-%d %H:%M:%S")
+                if control == 1 and static_dict:
+                    lat = round(float(doc["latitude"]), 2)
+                    lon = round(float(doc["longitude"]), 2)
                     vals = static_dict.get((lat, lon))
                     if vals:
-                        doc['z'] = vals["z"]
-                        doc['lsm'] = vals["lsm"]
-                processed_data.append(doc)        
+                        doc["z"] = vals["z"]
+                        doc["lsm"] = vals["lsm"]
+                processed_data.append(doc)
             for doc in processed_data:
                 try:
                     self._bulk_queue.put_nowait(doc)
-                except:
+                except Exception:
                     self.collection_era.insert_one(doc)
         except Exception as e:
             print(f"Error en la carga: {e}")
             raise
 
-    def saveStaticDictMongo(self,static_dict:dict):
+    def saveStaticDictMongo(self, static_dict):
+        """Guarda en MongoDB el diccionario de campos estáticos de ERA5."""
+
         docs = []
         for (lat, lon), vals in static_dict.items():
-            docs.append({
-                "latitude": lat,
-                "longitude": lon,
-                "z": vals["z"],
-                "lsm": vals["lsm"]
-            })
+            docs.append(
+                {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "z": vals["z"],
+                    "lsm": vals["lsm"],
+                }
+            )
         if docs:
             self.collection_z.insert_many(docs)
 
-    def loadStaticDictMongo(self)->dict:
+    def loadStaticDictMongo(self):
+        """Recupera desde MongoDB el diccionario de campos estáticos."""
+
         static_dict = {}
         pipeline = [{"$project": {"_id": 0, "latitude": 1, "longitude": 1, "z": 1, "lsm": 1}}]
         for doc in self.collection_z.aggregate(pipeline):
@@ -88,21 +111,22 @@ class DBmanager:
             lon = float(doc["longitude"])
             static_dict[(lat, lon)] = {
                 "z": float(doc["z"]),
-                "lsm": float(doc["lsm"])
+                "lsm": float(doc["lsm"]),
             }
         return static_dict
-    
-    def get_last_date_for_point(self, lat: float, lon: float):
+
+    def get_last_date_for_point(self, lat, lon):
+        """Devuelve la fecha más reciente guardada para un punto de rejilla."""
+
         lat_r = round(lat, 2)
         lon_r = round(lon, 2)
-    
+
         pipeline = [
             {"$match": {"latitude": lat_r, "longitude": lon_r}},
             {"$sort": {"valid_time": -1}},
             {"$limit": 1},
-            {"$project": {"valid_time": 1}}
+            {"$project": {"valid_time": 1}},
         ]
-    
+
         result = list(self.collection_era.aggregate(pipeline))
         return result[0]["valid_time"] if result else None
-

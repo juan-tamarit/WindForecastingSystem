@@ -15,6 +15,8 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
+from src.frame.DFmanager import DFmanager
+
 
 class AuroraMongoDataset(Dataset):
     """Construye muestras espacio-temporales de Aurora desde MongoDB."""
@@ -35,6 +37,7 @@ class AuroraMongoDataset(Dataset):
         self.lon_map = {round(float(lon), 2): j for j, lon in enumerate(self.lons)}
 
         self.static_grid = self._load_static_grid()
+        self.stats = self._load_stats()
 
     def _load_static_grid(self):
         """Carga los campos estáticos usados por todas las muestras."""
@@ -58,6 +61,30 @@ class AuroraMongoDataset(Dataset):
 
         client.close()
         return {"elevation": elev, "lsm": lsm}
+
+    def _load_stats(self):
+        manager = DFmanager()
+        stats = manager.get_spatial_stats(self.times, self.lats, self.lons)
+        manager.client.close()
+
+        return stats or {
+            "2t": {
+                "mean": torch.zeros(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+                "std": torch.ones(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+            },
+            "10u": {
+                "mean": torch.zeros(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+                "std": torch.ones(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+            },
+            "10v": {
+                "mean": torch.zeros(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+                "std": torch.ones(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+            },
+            "msl": {
+                "mean": torch.zeros(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+                "std": torch.ones(len(self.lats), len(self.lons), dtype=torch.float32).numpy(),
+            },
+        }
 
     def __len__(self):
         """Devuelve el número de ventanas temporales válidas del dataset."""
@@ -158,6 +185,16 @@ class AuroraDataModule(pl.LightningDataModule):
         self.val_times = all_times[train_end:remaining_size]
         self.test_times = all_times[remaining_size:]
 
+        self.train_dataset = AuroraMongoDataset(
+            self.train_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora
+        )
+        self.val_dataset = AuroraMongoDataset(
+            self.val_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora
+        )
+        self.test_dataset = AuroraMongoDataset(
+            self.test_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora
+        )
+
         print("--- DataModule Configurado ---")
         print(f"Split Train/Val (YAML): {split_val}")
         print(f"Fechas Train: {self.train_times[0].date()} a {self.train_times[-1].date()}")
@@ -168,7 +205,7 @@ class AuroraDataModule(pl.LightningDataModule):
         """Construye el dataloader de entrenamiento."""
 
         return DataLoader(
-            AuroraMongoDataset(self.train_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora),
+            self.train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
@@ -179,7 +216,7 @@ class AuroraDataModule(pl.LightningDataModule):
         """Construye el dataloader de validación."""
 
         return DataLoader(
-            AuroraMongoDataset(self.val_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora),
+            self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -190,7 +227,7 @@ class AuroraDataModule(pl.LightningDataModule):
         """Construye el dataloader de test."""
 
         return DataLoader(
-            AuroraMongoDataset(self.test_times, self.cfg_mdb, self.lats, self.lons, self.cfg_aurora),
+            self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,

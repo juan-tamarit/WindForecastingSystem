@@ -1,7 +1,7 @@
-"""Script de evaluación final del modelo Aurora.
+"""Script de evaluacion final del modelo Aurora.
 
 Este punto de entrada localiza el mejor checkpoint disponible, ejecuta el test
-autoregresivo sobre el conjunto temporal reservado y guarda las métricas
+autoregresivo sobre el conjunto temporal reservado y guarda las metricas
 agregadas y detalladas del experimento.
 """
 
@@ -17,10 +17,10 @@ from src.models.aurora_dataset import AuroraDataModule, AuroraFinetuner
 
 
 class AuroraTester:
-    """Orquesta la evaluación final del modelo sobre el conjunto de test."""
+    """Orquesta la evaluacion final del modelo sobre el conjunto de test."""
 
     def extract_loss(self, path):
-        """Extrae la pérdida codificada en el nombre de un checkpoint."""
+        """Extrae la perdida codificada en el nombre de un checkpoint."""
 
         try:
             name = os.path.basename(path).replace(".ckpt", "")
@@ -36,7 +36,7 @@ class AuroraTester:
             return float("inf")
 
     def get_best_checkpoint(self, checkpoint_dir="checkpoints/"):
-        """Devuelve el checkpoint con mejor pérdida dentro del directorio dado."""
+        """Devuelve el checkpoint con mejor perdida dentro del directorio dado."""
 
         ckpts = glob.glob(os.path.join(checkpoint_dir, "aurora-*.ckpt"))
         ckpts = [checkpoint for checkpoint in ckpts if "last" not in checkpoint]
@@ -46,8 +46,34 @@ class AuroraTester:
 
         return min(ckpts, key=self.extract_loss)
 
+    def to_cuda(self, obj):
+        """Mueve recursivamente tensores del batch a GPU."""
+
+        if isinstance(obj, dict):
+            return {k: self.to_cuda(v) for k, v in obj.items()}
+        return obj.cuda() if torch.is_tensor(obj) else obj
+
+    def update_autoregressive_batch(self, aurora_batch, prediction):
+        """Actualiza el estado autoregresivo usando la prediccion del paso actual."""
+
+        aurora_batch.surf_vars = {
+            k: torch.stack(
+                [
+                    aurora_batch.surf_vars[k][:, 1],
+                    prediction.surf_vars[k].squeeze(1),
+                ],
+                dim=1,
+            )
+            for k in ("2t", "10u", "10v", "msl")
+        }
+
+    def compute_wind_rmse(self, pred_u, pred_v, target_u, target_v):
+        """Calcula el RMSE combinado de 10u y 10v."""
+
+        return torch.sqrt(F.mse_loss(pred_u, target_u) + F.mse_loss(pred_v, target_v))
+
     def run(self):
-        """Ejecuta la evaluación completa y guarda los resultados en CSV."""
+        """Ejecuta la evaluacion completa y guarda los resultados en CSV."""
 
         fase_objetivo = "fase3"
 
@@ -74,80 +100,99 @@ class AuroraTester:
 
         print(f"Mejor modelo detectado para Test: {os.path.basename(checkpoint_path)}")
 
-        model = AuroraFinetuner.load_from_checkpoint(
+        model_ft = AuroraFinetuner.load_from_checkpoint(
             checkpoint_path,
             cfg_coords={"lats": dm.lats, "lons": dm.lons},
             cfg_aurora=cfg_test,
         )
-        model.eval().cuda()
+        model_base = AuroraFinetuner(
+            cfg_coords={"lats": dm.lats, "lons": dm.lons},
+            cfg_aurora=cfg_test,
+        )
+
+        model_ft.eval().cuda()
+        model_base.eval().cuda()
+        torch.cuda.empty_cache()
+
+        clima_stats = dm.train_dataset.stats
+        clima_u = torch.as_tensor(
+            clima_stats["10u"]["mean"], dtype=torch.float32, device="cuda"
+        )[..., model_ft.lon_indices]
+        clima_v = torch.as_tensor(
+            clima_stats["10v"]["mean"], dtype=torch.float32, device="cuda"
+        )[..., model_ft.lon_indices]
 
         results = []
 
         with torch.no_grad():
             for i, batch in enumerate(test_loader):
-                def to_cuda(obj):
-                    """Mueve recursivamente tensores del batch a GPU."""
+                batch = self.to_cuda(batch)
 
-                    if isinstance(obj, dict):
-                        return {k: to_cuda(v) for k, v in obj.items()}
-                    return obj.cuda() if torch.is_tensor(obj) else obj
+                batch_ft = model_ft.prepare_aurora_batch(batch)
+                batch_base = model_base.prepare_aurora_batch(batch)
 
-                batch = to_cuda(batch)
-                aurora_batch = model.prepare_aurora_batch(batch)
-
-                per_u_real = batch["inputs"]["10u"][:, 1][..., model.lon_indices]
-                per_v_real = batch["inputs"]["10v"][:, 1][..., model.lon_indices]
+                per_u_real = batch["inputs"]["10u"][:, 1][..., model_ft.lon_indices]
+                per_v_real = batch["inputs"]["10v"][:, 1][..., model_ft.lon_indices]
 
                 n_steps = len(batch["targets"])
                 for s in range(1, n_steps + 1):
-                    prediction = model(aurora_batch)
                     target_key = f"step_{s}"
 
-                    t_u_real = batch["targets"][target_key]["10u"][..., model.lon_indices].squeeze(1)
-                    t_v_real = batch["targets"][target_key]["10v"][..., model.lon_indices].squeeze(1)
+                    prediction_ft = model_ft(batch_ft)
+                    prediction_base = model_base(batch_base)
 
-                    p_u_real = prediction.surf_vars["10u"].squeeze(1)
-                    p_v_real = prediction.surf_vars["10v"].squeeze(1)
+                    t_u_real = batch["targets"][target_key]["10u"][..., model_ft.lon_indices].squeeze(1)
+                    t_v_real = batch["targets"][target_key]["10v"][..., model_ft.lon_indices].squeeze(1)
 
-                    rmse_aur = torch.sqrt(F.mse_loss(p_u_real, t_u_real) + F.mse_loss(p_v_real, t_v_real))
-                    mae_aur = F.l1_loss(p_u_real, t_u_real) + F.l1_loss(p_v_real, t_v_real)
-                    rmse_per = torch.sqrt(F.mse_loss(per_u_real, t_u_real) + F.mse_loss(per_v_real, t_v_real))
+                    p_u_ft = prediction_ft.surf_vars["10u"].squeeze(1)
+                    p_v_ft = prediction_ft.surf_vars["10v"].squeeze(1)
+                    p_u_base = prediction_base.surf_vars["10u"].squeeze(1)
+                    p_v_base = prediction_base.surf_vars["10v"].squeeze(1)
+
+                    clima_u_real = clima_u.unsqueeze(0).expand_as(t_u_real)
+                    clima_v_real = clima_v.unsqueeze(0).expand_as(t_v_real)
+
+                    rmse_ft = self.compute_wind_rmse(p_u_ft, p_v_ft, t_u_real, t_v_real)
+                    rmse_base = self.compute_wind_rmse(p_u_base, p_v_base, t_u_real, t_v_real)
+                    rmse_persist = self.compute_wind_rmse(per_u_real, per_v_real, t_u_real, t_v_real)
+                    rmse_clima = self.compute_wind_rmse(clima_u_real, clima_v_real, t_u_real, t_v_real)
+                    mae_ft = F.l1_loss(p_u_ft, t_u_real) + F.l1_loss(p_v_ft, t_v_real)
 
                     results.append(
                         {
                             "batch_idx": i,
                             "step": s,
-                            "rmse_aurora": rmse_aur.item(),
-                            "mae_aurora": mae_aur.item(),
-                            "rmse_persist": rmse_per.item(),
+                            "rmse_aurora_ft": rmse_ft.item(),
+                            "rmse_aurora_base": rmse_base.item(),
+                            "rmse_persist": rmse_persist.item(),
+                            "rmse_clima": rmse_clima.item(),
+                            "mae_aurora_ft": mae_ft.item(),
                         }
                     )
 
                     if s < n_steps:
-                        new_surf_vars = {
-                            k: torch.stack(
-                                [
-                                    aurora_batch.surf_vars[k][:, 1],
-                                    prediction.surf_vars[k].squeeze(1),
-                                ],
-                                dim=1,
-                            )
-                            for k in ("2t", "10u", "10v", "msl")
-                        }
-                        aurora_batch.surf_vars = new_surf_vars
+                        self.update_autoregressive_batch(batch_ft, prediction_ft)
+                        self.update_autoregressive_batch(batch_base, prediction_base)
 
         df = pd.DataFrame(results)
         summary = df.groupby("step").agg(
             {
-                "rmse_aurora": "mean",
-                "mae_aurora": "mean",
+                "rmse_aurora_ft": "mean",
+                "rmse_aurora_base": "mean",
                 "rmse_persist": "mean",
+                "rmse_clima": "mean",
+                "mae_aurora_ft": "mean",
             }
         )
 
-        summary["skill_score"] = (
-            (summary["rmse_persist"] - summary["rmse_aurora"])
-            / summary["rmse_persist"]
+        summary["skill_vs_persist"] = (
+            (summary["rmse_persist"] - summary["rmse_aurora_ft"]) / summary["rmse_persist"]
+        ) * 100
+        summary["skill_vs_clima"] = (
+            (summary["rmse_clima"] - summary["rmse_aurora_ft"]) / summary["rmse_clima"]
+        ) * 100
+        summary["skill_vs_base"] = (
+            (summary["rmse_aurora_base"] - summary["rmse_aurora_ft"]) / summary["rmse_aurora_base"]
         ) * 100
 
         output_dir = "docs/resultados"
@@ -156,7 +201,7 @@ class AuroraTester:
         csv_path = os.path.join(output_dir, f"test_results_{model_name}.csv")
 
         print("\n" + "=" * 60)
-        print("MÃ‰TRICAS FINALES DE TEST (UNIDADES FÃSICAS)")
+        print("METRICAS FINALES DE TEST (UNIDADES FISICAS)")
         print("-" * 60)
         print(summary.to_string())
         print("=" * 60)
@@ -166,19 +211,19 @@ class AuroraTester:
 
 
 def extract_loss(path):
-    """Mantiene la API histórica basada en función para la pérdida del checkpoint."""
+    """Mantiene la API historica basada en funcion para la perdida del checkpoint."""
 
     return AuroraTester().extract_loss(path)
 
 
 def get_best_checkpoint(checkpoint_dir="checkpoints/"):
-    """Mantiene la API histórica basada en función para localizar checkpoints."""
+    """Mantiene la API historica basada en funcion para localizar checkpoints."""
 
     return AuroraTester().get_best_checkpoint(checkpoint_dir=checkpoint_dir)
 
 
 def run_test():
-    """Mantiene la API histórica basada en función para lanzar el test."""
+    """Mantiene la API historica basada en funcion para lanzar el test."""
 
     return AuroraTester().run()
 

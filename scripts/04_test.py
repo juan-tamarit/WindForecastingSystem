@@ -114,14 +114,6 @@ class AuroraTester:
         model_base.eval().cuda()
         torch.cuda.empty_cache()
 
-        clima_stats = dm.train_dataset.stats
-        clima_u = torch.as_tensor(
-            clima_stats["10u"]["mean"], dtype=torch.float32, device="cuda"
-        )[..., model_ft.lon_indices]
-        clima_v = torch.as_tensor(
-            clima_stats["10v"]["mean"], dtype=torch.float32, device="cuda"
-        )[..., model_ft.lon_indices]
-
         results = []
 
         with torch.no_grad():
@@ -149,13 +141,9 @@ class AuroraTester:
                     p_u_base = prediction_base.surf_vars["10u"].squeeze(1)
                     p_v_base = prediction_base.surf_vars["10v"].squeeze(1)
 
-                    clima_u_real = clima_u.unsqueeze(0).expand_as(t_u_real)
-                    clima_v_real = clima_v.unsqueeze(0).expand_as(t_v_real)
-
                     rmse_ft = self.compute_wind_rmse(p_u_ft, p_v_ft, t_u_real, t_v_real)
                     rmse_base = self.compute_wind_rmse(p_u_base, p_v_base, t_u_real, t_v_real)
                     rmse_persist = self.compute_wind_rmse(per_u_real, per_v_real, t_u_real, t_v_real)
-                    rmse_clima = self.compute_wind_rmse(clima_u_real, clima_v_real, t_u_real, t_v_real)
                     mae_ft = F.l1_loss(p_u_ft, t_u_real) + F.l1_loss(p_v_ft, t_v_real)
 
                     results.append(
@@ -165,7 +153,6 @@ class AuroraTester:
                             "rmse_aurora_ft": rmse_ft.item(),
                             "rmse_aurora_base": rmse_base.item(),
                             "rmse_persist": rmse_persist.item(),
-                            "rmse_clima": rmse_clima.item(),
                             "mae_aurora_ft": mae_ft.item(),
                         }
                     )
@@ -180,16 +167,12 @@ class AuroraTester:
                 "rmse_aurora_ft": "mean",
                 "rmse_aurora_base": "mean",
                 "rmse_persist": "mean",
-                "rmse_clima": "mean",
                 "mae_aurora_ft": "mean",
             }
         )
 
         summary["skill_vs_persist"] = (
             (summary["rmse_persist"] - summary["rmse_aurora_ft"]) / summary["rmse_persist"]
-        ) * 100
-        summary["skill_vs_clima"] = (
-            (summary["rmse_clima"] - summary["rmse_aurora_ft"]) / summary["rmse_clima"]
         ) * 100
         summary["skill_vs_base"] = (
             (summary["rmse_aurora_base"] - summary["rmse_aurora_ft"]) / summary["rmse_aurora_base"]

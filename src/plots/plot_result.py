@@ -34,18 +34,12 @@ class ResultsPlotter:
                 "rmse_aurora_base": "mean",
                 "mae_aurora_ft": "mean",
                 "rmse_persist": "mean",
-                "rmse_clima": "mean",
             }
         ).reset_index()
 
         step_means["skill_vs_persist"] = (
             (step_means["rmse_persist"] - step_means["rmse_aurora_ft"])
             / step_means["rmse_persist"]
-            * 100
-        )
-        step_means["skill_vs_clima"] = (
-            (step_means["rmse_clima"] - step_means["rmse_aurora_ft"])
-            / step_means["rmse_clima"]
             * 100
         )
         step_means["gain_vs_base"] = (
@@ -87,16 +81,6 @@ class ResultsPlotter:
             linewidth=2,
             alpha=0.9,
         )
-        ax1.plot(
-            steps,
-            step_means["rmse_clima"],
-            "s-",
-            color="gray",
-            label="Climatologia",
-            linewidth=2,
-            alpha=0.85,
-        )
-
         ax1.set_title("Comparativa de RMSE", fontsize=14, fontweight="bold", pad=15)
         ax1.set_xlabel("Horizonte Temporal")
         ax1.set_ylabel("Error (m/s)")
@@ -111,9 +95,9 @@ class ResultsPlotter:
         ax2.set_xticklabels(labels)
 
         x = np.arange(len(steps))
-        width = 0.24
+        width = 0.35
         bars_persist = ax3.bar(
-            x - width,
+            x - width / 2,
             step_means["skill_vs_persist"],
             width=width,
             color="crimson",
@@ -122,18 +106,8 @@ class ResultsPlotter:
             linewidth=1,
             label="vs Persistencia",
         )
-        bars_clima = ax3.bar(
-            x,
-            step_means["skill_vs_clima"],
-            width=width,
-            color="gray",
-            alpha=0.8,
-            edgecolor="black",
-            linewidth=1,
-            label="vs Climatologia",
-        )
         bars_base = ax3.bar(
-            x + width,
+            x + width / 2,
             step_means["gain_vs_base"],
             width=width,
             color="dodgerblue",
@@ -151,7 +125,7 @@ class ResultsPlotter:
         ax3.axhline(0, color="black", linewidth=1.5)
         ax3.legend(frameon=True)
 
-        for bars in (bars_persist, bars_clima, bars_base):
+        for bars in (bars_persist, bars_base):
             for bar in bars:
                 height = bar.get_height()
                 va = "bottom" if height > 0 else "top"
@@ -168,12 +142,10 @@ class ResultsPlotter:
 
         y_min = min(
             step_means["skill_vs_persist"].min(),
-            step_means["skill_vs_clima"].min(),
             step_means["gain_vs_base"].min(),
         ) - 10
         y_max = max(
             step_means["skill_vs_persist"].max(),
-            step_means["skill_vs_clima"].max(),
             step_means["gain_vs_base"].max(),
         ) + 10
         ax3.set_ylim(y_min, y_max)
